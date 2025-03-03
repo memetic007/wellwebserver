@@ -40,6 +40,14 @@ class WellClient:
         command_buttons_frame.pack(fill="x", padx=5, pady=5)
         
         tk.Label(command_buttons_frame, text="Command:").pack(side=tk.LEFT, padx=5)
+        
+        # Add extract checkbox
+        self.extract_var = tk.BooleanVar()
+        self.extract_checkbox = tk.Checkbutton(command_buttons_frame, 
+                                             text="Extract", 
+                                             variable=self.extract_var)
+        self.extract_checkbox.pack(side=tk.LEFT, padx=5)
+        
         self.command_entry = tk.Entry(self.command_frame, width=80)
         self.command_entry.pack(fill="x", padx=5, pady=5)
         self.command_entry.bind("<Return>", lambda event: self.send_command())
@@ -118,10 +126,13 @@ class WellClient:
             return
         
         try:
+            # Choose endpoint based on extract checkbox
+            endpoint = '/extractconfcontent' if self.extract_var.get() else '/execute'
+            
             response = requests.post(
-                f"{self.server_url}/execute",
+                f"{self.server_url}{endpoint}",
                 headers={"X-Session-ID": self.session_id},
-                json={"command": command},  # Back to original command
+                json={"command": command},
                 timeout=30
             )
             
@@ -129,7 +140,7 @@ class WellClient:
             
             if response.status_code == 200:
                 data = response.json()
-                self.output_text.insert(tk.END, f"\n> {command}\n")  # Back to original command
+                self.output_text.insert(tk.END, f"\n> {command}\n")
                 
                 output = data.get("output", "")
                 if output:

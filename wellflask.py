@@ -2,6 +2,8 @@ from flask import Flask, request, session, jsonify, g
 import paramiko, time, uuid, os, signal
 import base64
 import re
+import extract2json
+import makeobjects2json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '397397397'  # for session cookies
@@ -126,6 +128,36 @@ def execute():
         return jsonify({'error': result}), 401
         
     exit_status, out, err = result
+    response = {'exit_status': exit_status, 'output': out}
+    if err:
+        response['error_output'] = err
+    return jsonify(response), 200
+
+
+@app.route('/extractconfcontent', methods=['POST'])
+def extractconfcontent():
+    # Get session ID
+    sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
+    print("entering /extractconfcontent")
+    # Get command
+    cmd = request.get_json().get('command')
+    if not cmd:
+        return jsonify({'error': 'No command provided'}), 400
+    print("command provided: " + cmd)
+    # Execute command using helper function
+    success, result = execute_ssh_command(sess_id, cmd)
+    print("success: " + str(success))
+    print("result: " + str(result))
+    if not success:
+        return jsonify({'error': result}), 401
+        
+    exit_status, out, err = result
+    # process the output of the extract command to line by line JSON
+    out = extract2json.processrawextract(out)
+    
+    # convert the line by line JSON to a single JSON object
+    out = makeobjects2json.makeObjects(out)
+
     response = {'exit_status': exit_status, 'output': out}
     if err:
         response['error_output'] = err
@@ -334,7 +366,12 @@ def post_reply():
             'error': f'Failed to process post reply: {str(e)}'
         }), 500
 
-# Add this at the end of the file
+# Add this after all your route definitions (just before if __name__ == '__main__':)
+print("\n*** Registered Routes ***")
+print("\n".join(f"- {rule}" for rule in app.url_map.iter_rules()))
+print("\n")
+
 if __name__ == '__main__':
     print("Starting Flask server on port 5000...")
     app.run(host='0.0.0.0', port=5000, debug=True)
+

@@ -1,6 +1,6 @@
 import sys
 import json
-import utils
+
 
 # check for -test switch on the command line 
 
@@ -66,109 +66,102 @@ def getDateFromTopicHeader(arr):
 # main program
 # Read input from teststring.txt
 
-if utils.checkTest():
-    with open("teststring.txt", "r", encoding="utf-8", errors="replace") as file:
-        input_text = file.read().strip()
-
-        
+def processrawextract(input_text):
+    try:
         # add final newline to make split work correctly on last line of text
         input_text = input_text + "\n"
 
         # escape quotes in lines for later json purposes
         input_text = input_text.replace('"', '\\"')
-else:
-    # Read input and decode with error handling
-    input_text = sys.stdin.buffer.read().decode("utf-8", errors="replace").strip()
-    
-    # add final newline to make split work correctly on last line of text
-    input_text = input_text + "\n"
 
-    # escape quotes in lines for later json purposes
-    input_text = input_text.replace('"', '\\"')
-
-# Split into lines, preserving leading whitespace for indented lines
-lines = input_text.splitlines()
-  
-
-# Create JSON entries and working values
-entries = []
-current_handle = "startupHandleError"
-current_topic = "topicError"
-current_datetime = ""
-current_username = ""
-current_title = ""
-ignorelineflag = True
-for line in lines:
+        # Split into lines, preserving leading whitespace for indented lines
+        lines = input_text.splitlines()
         
-    line = line.rstrip()  # Remove trailing whitespace
-    
-    # If line doesn't start with whitespace, check for handle
-    if line and not line[0].isspace():
-        tokens = line.split()
-        if len(tokens) > 0:
-            current_handle = tokens[0].replace(':', '')    
-        else:
-            current_handle = "headerHandleError"
-        
-        if current_handle.count('.') == 1:
-            dictType = "topicheader"
-            dictTimeDate = ""
-            current_username = ""
-            current_pseud = ""
-            current_topic = current_handle
-            current_title = getTitle(line)
 
-        elif current_handle.count('.') == 2:
-            dictType = "postheader"
-            dictTimeDate = getDateFromTopicHeader(tokens)   
-            current_datetime = dictTimeDate
-            current_username = getUsername(line)
-            current_pseud = getPseud(line)  
-        else:
-            dictType = "headerTypeError"
-            dictTimeDate = ""
-
-        dictHandle = current_handle
-        dictTopic = current_topic 
-        dictTitle = current_title
-        dictUsername = current_username
-        dictPseud = current_pseud
-        dictText = line
-    else:
-        dictType = "posttext"
-        dictHandle = current_handle
-        dictTopic = ""
-        dictTitle = ""
-        dictUsername = ""
-        dictPseud = ""
-        dictText = line.strip()
-        dictTimeDate = ""
-
-
-    # ignore links information for topics   
-    
-    if not (current_handle.count('.') == 1 and dictType == "posttext"):
-        
-        # Append line data to list as dictionary
-        entries.append({
-            "type": dictType,
-            "handle": current_handle,
-            "topic": dictTopic,
-            "title": dictTitle,
-            "username": dictUsername,
-            "pseud": dictPseud,
-            "datetime": dictTimeDate,
-            "text": dictText,
+        # Create JSON entries and working values
+        entries = []
+        current_handle = "startupHandleError"
+        current_topic = "topicError"
+        current_datetime = ""
+        current_username = ""
+        current_title = ""
+        ignorelineflag = True
+        for line in lines:
             
-        })
+            line = line.rstrip()  # Remove trailing whitespace
+            
+            # If line doesn't start with whitespace, check for handle
+            if line and not line[0].isspace():
+                tokens = line.split()
+                if len(tokens) > 0:
+                    current_handle = tokens[0].replace(':', '')    
+                else:
+                    current_handle = "headerHandleError"
+                
+                if current_handle.count('.') == 1:
+                    dictType = "topicheader"
+                    dictTimeDate = ""
+                    current_username = ""
+                    current_pseud = ""
+                    current_topic = current_handle
+                    current_title = getTitle(line)
 
-# Format JSON with proper indentation
-json_output = json.dumps(entries, indent=2)
+                elif current_handle.count('.') == 2:
+                    dictType = "postheader"
+                    dictTimeDate = getDateFromTopicHeader(tokens)   
+                    current_datetime = dictTimeDate
+                    current_username = getUsername(line)
+                    current_pseud = getPseud(line)  
+                else:
+                    dictType = "headerTypeError"
+                    dictTimeDate = ""
 
-# Print JSON output, ensuring UTF-8 encoding
-sys.stdout.buffer.write(json_output.encode("utf-8", errors="replace"))
+                dictHandle = current_handle
+                dictTopic = current_topic 
+                dictTitle = current_title
+                dictUsername = current_username
+                dictPseud = current_pseud
+                dictText = line
+            else:
+                dictType = "posttext"
+                dictHandle = current_handle
+                dictTopic = ""
+                dictTitle = ""
+                dictUsername = ""
+                dictPseud = ""
+                dictText = line.strip()
+                dictTimeDate = ""
 
-# Write to file if -text switch is present for testing
-if utils.checkTest():
-    with open("stringtestout.txt", "w", encoding="utf-8") as file:
-        file.write(json_output) 
+
+            # ignore links information for topics   
+            
+            if not (current_handle.count('.') == 1 and dictType == "posttext"):
+                
+                # Append line data to list as dictionary
+                entries.append({
+                    "type": dictType,
+                    "handle": current_handle,
+                    "topic": dictTopic,
+                    "title": dictTitle,
+                    "username": dictUsername,
+                    "pseud": dictPseud,
+                    "datetime": dictTimeDate,
+                    "text": dictText,
+                    
+                })
+
+        # Format JSON with proper indentation
+        json_output = json.dumps(entries, indent=2)
+        
+        # Return the formatted JSON
+        return json_output
+        
+    except Exception as e:
+        print(f"Error processing text: {str(e)}")
+        return json.dumps({"error": str(e)})
+
+# Add this if you want to test the module directly
+if __name__ == "__main__":
+    # Test code here if needed
+    pass
+   
