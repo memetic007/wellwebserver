@@ -150,7 +150,21 @@ def extractconfcontent():
         return jsonify({'error': 'Command must start with "extract"'}), 400
         
     print("command provided to extractconfcontent: " + cmd)
-    # Execute command using helper function
+
+    # First get the conflist - try up to two times
+    for attempt in range(2):
+        success, result = execute_ssh_command(sess_id, 'cat .cfdir/.cflist')
+        if success:
+            exit_status, conflist_out, conflist_err = result
+            if exit_status == 0:
+                conflist = [line.strip() for line in conflist_out.splitlines() if line.strip()]
+                break
+        if attempt == 0:
+            print("First conflist attempt failed, retrying...")
+    else:  # No successful attempt
+        return jsonify({'error': 'Failed to retrieve conference list'}), 500
+
+    # Now execute the extract command
     success, result = execute_ssh_command(sess_id, cmd)
     
     if not success:
@@ -163,7 +177,12 @@ def extractconfcontent():
     # convert the line by line JSON to a single JSON object
     out = makeobjects2json.makeObjects(out)
 
-    response = {'exit_status': exit_status, 'output': out}
+    # Return both conflist and extract output
+    response = {
+        'exit_status': exit_status,
+        'output': out,
+        'conflist': conflist
+    }
     if err:
         response['error_output'] = err
     return jsonify(response), 200
