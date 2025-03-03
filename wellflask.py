@@ -138,16 +138,21 @@ def execute():
 def extractconfcontent():
     # Get session ID
     sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
-    print("entering /extractconfcontent")
+    
     # Get command
     cmd = request.get_json().get('command')
     if not cmd:
         return jsonify({'error': 'No command provided'}), 400
-    print("command provided: " + cmd)
+        
+    # Check if command starts with 'extract' (case insensitive)
+    first_token = cmd.split()[0] if cmd.split() else ""
+    if not first_token.lower() == "extract":
+        return jsonify({'error': 'Command must start with "extract"'}), 400
+        
+    print("command provided to extractconfcontent: " + cmd)
     # Execute command using helper function
     success, result = execute_ssh_command(sess_id, cmd)
-    print("success: " + str(success))
-    print("result: " + str(result))
+    
     if not success:
         return jsonify({'error': result}), 401
         
