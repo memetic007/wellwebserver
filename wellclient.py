@@ -2,51 +2,77 @@ import tkinter as tk
 from tkinter import scrolledtext, messagebox
 import requests
 import json
+import base64
 
 class WellClient:
     def __init__(self, root):
         self.root = root
         self.root.title("Well SSH Client")
-        self.root.geometry("800x600")
+        self.root.geometry("800x900")  # Increased height further
         self.session_id = None
         
         # Create frames
         self.login_frame = tk.Frame(root)
         self.command_frame = tk.Frame(root)
         
+        # Add shutdown button at the top of the window
+        self.shutdown_button = tk.Button(root, text="Shutdown Server", 
+                                       command=self.shutdown_server, 
+                                       bg="red", fg="white")
+        self.shutdown_button.pack(anchor="ne", padx=5, pady=5)
+        
         # Login frame widgets
         tk.Label(self.login_frame, text="Username:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.username_entry = tk.Entry(self.login_frame, width=30)
         self.username_entry.grid(row=0, column=1, padx=5, pady=5)
+        self.username_entry.insert(0, "memetic")  # Set default username
         
         tk.Label(self.login_frame, text="Password:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.password_entry = tk.Entry(self.login_frame, width=30, show="*")
         self.password_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.password_entry.insert(0, "land+High007")  # Set default password
         
         self.login_button = tk.Button(self.login_frame, text="Connect", command=self.connect)
         self.login_button.grid(row=2, column=0, columnspan=2, pady=10)
         
         # Command frame widgets
-        tk.Label(self.command_frame, text="Command:").pack(anchor="w", padx=5, pady=5)
+        command_buttons_frame = tk.Frame(self.command_frame)
+        command_buttons_frame.pack(fill="x", padx=5, pady=5)
+        
+        tk.Label(command_buttons_frame, text="Command:").pack(side=tk.LEFT, padx=5)
         self.command_entry = tk.Entry(self.command_frame, width=80)
         self.command_entry.pack(fill="x", padx=5, pady=5)
         self.command_entry.bind("<Return>", lambda event: self.send_command())
         
-        self.send_button = tk.Button(self.command_frame, text="Send", command=self.send_command)
-        self.send_button.pack(anchor="w", padx=5, pady=5)
+        button_frame = tk.Frame(self.command_frame)
+        button_frame.pack(fill="x", padx=5)
+        
+        self.send_button = tk.Button(button_frame, text="Send", command=self.send_command)
+        self.send_button.pack(side=tk.LEFT, padx=5)
+        
+        self.confs_button = tk.Button(button_frame, text="Confs", command=self.get_confs)
+        self.confs_button.pack(side=tk.LEFT, padx=5)
         
         tk.Label(self.command_frame, text="Output:").pack(anchor="w", padx=5, pady=5)
         self.output_text = scrolledtext.ScrolledText(self.command_frame, width=80, height=25)
         self.output_text.pack(fill="both", expand=True, padx=5, pady=5)
         
-        self.disconnect_button = tk.Button(self.command_frame, text="Disconnect", command=self.disconnect)
-        self.disconnect_button.pack(anchor="w", padx=5, pady=10)
+        # Reply frame
+        tk.Label(self.command_frame, text="Reply:").pack(anchor="w", padx=5, pady=5)
+        self.reply_text = scrolledtext.ScrolledText(self.command_frame, width=80, height=10)
+        self.reply_text.pack(fill="x", padx=5, pady=5)
         
-        # Add shutdown button next to disconnect button
-        self.shutdown_button = tk.Button(self.command_frame, text="Shutdown Server", 
-                                        command=self.shutdown_server, 
-                                        bg="red", fg="white")
-        self.shutdown_button.pack(anchor="w", padx=5, pady=10)
+        # Frame for buttons at bottom
+        bottom_frame = tk.Frame(self.command_frame)
+        bottom_frame.pack(fill="x", padx=5, pady=(5, 15))  # Added more bottom padding
+        
+        # Submit Reply button
+        self.submit_reply_button = tk.Button(bottom_frame, text="Submit Reply", command=self.submit_reply)
+        self.submit_reply_button.pack(side=tk.LEFT, padx=5)
+        
+        # Move disconnect button to bottom frame
+        self.disconnect_button = tk.Button(bottom_frame, text="Disconnect", command=self.disconnect)
+        self.disconnect_button.pack(side=tk.LEFT, padx=5)
         
         # Start with login frame
         self.login_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -95,7 +121,7 @@ class WellClient:
             response = requests.post(
                 f"{self.server_url}/execute",
                 headers={"X-Session-ID": self.session_id},
-                json={"command": command},
+                json={"command": command},  # Back to original command
                 timeout=30
             )
             
@@ -103,9 +129,8 @@ class WellClient:
             
             if response.status_code == 200:
                 data = response.json()
-                self.output_text.insert(tk.END, f"\n> {command}\n")
+                self.output_text.insert(tk.END, f"\n> {command}\n")  # Back to original command
                 
-                # Display the actual command output, not the JSON
                 output = data.get("output", "")
                 if output:
                     self.output_text.insert(tk.END, output)
@@ -142,14 +167,116 @@ class WellClient:
     def shutdown_server(self):
         if messagebox.askyesno("Confirm Shutdown", "Are you sure you want to shut down the server?"):
             try:
-                response = requests.post(f"{self.server_url}/shutdown")
-                if response.status_code == 200:
-                    messagebox.showinfo("Success", "Server is shutting down")
-                    self.disconnect()  # Disconnect client since server is going down
-                else:
-                    messagebox.showerror("Error", "Failed to shut down server")
+                self.output_text.insert(tk.END, "\nInitiating server shutdown...\n")  # Add message to console
+                self.output_text.see(tk.END)
+                requests.post(f"{self.server_url}/shutdown")
+                messagebox.showinfo("Success", "Server shutdown initiated")
+                self.disconnect()  # Clean up client state
+            except requests.exceptions.ConnectionError:
+                # This is expected - server killed the connection
+                self.output_text.insert(tk.END, "Server has terminated.\n")  # Add termination message
+                self.output_text.see(tk.END)
+                messagebox.showinfo("Success", "Server has been shut down")
+                self.disconnect()
             except Exception as e:
-                messagebox.showerror("Error", f"Error shutting down server: {str(e)}")
+                messagebox.showerror("Error", f"Unexpected error shutting down server: {str(e)}")
+
+    def get_cflist(self):
+        if not self.session_id:
+            messagebox.showerror("Error", "Not connected to server")
+            return None
+        
+        try:
+            response = requests.get(
+                f"{self.server_url}/cflist",
+                headers={"X-Session-ID": self.session_id},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('cflist', [])
+            else:
+                error_msg = response.json().get('error', 'Unknown error')
+                self.output_text.insert(tk.END, f"\nError getting cflist: {error_msg}\n")
+                self.output_text.see(tk.END)
+                return None
+                
+        except Exception as e:
+            self.output_text.insert(tk.END, f"\nError: {str(e)}\n")
+            self.output_text.see(tk.END)
+            return None
+
+    def submit_reply(self):
+        if not self.session_id:
+            messagebox.showerror("Error", "Not connected to server")
+            return
+            
+        # Get reply text and encode as base64
+        reply_text = self.reply_text.get("1.0", tk.END)
+        if not reply_text.strip():
+            messagebox.showerror("Error", "Reply text is empty")
+            return
+            
+        try:
+            # Encode the text as base64
+            base64_content = base64.b64encode(reply_text.encode()).decode()
+            
+            # Send to server
+            response = requests.post(
+                f"{self.server_url}/postreply",
+                headers={"X-Session-ID": self.session_id},
+                json={
+                    "base64_content": base64_content,
+                    "conference": "test",
+                    "topic": "2264"
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.output_text.insert(tk.END, "\n--- Reply Submitted ---\n")
+                self.output_text.insert(tk.END, data.get('output', ''))
+                self.output_text.see(tk.END)
+                
+                # Clear reply box after successful submission
+                self.reply_text.delete("1.0", tk.END)
+            else:
+                error_msg = response.json().get('error', 'Unknown error')
+                self.output_text.insert(tk.END, f"\nError submitting reply: {error_msg}\n")
+                self.output_text.see(tk.END)
+                
+        except Exception as e:
+            self.output_text.insert(tk.END, f"\nError: {str(e)}\n")
+            self.output_text.see(tk.END)
+
+    def get_confs(self):
+        if not self.session_id:
+            messagebox.showerror("Error", "Not connected to server")
+            return
+        
+        try:
+            response = requests.get(
+                f"{self.server_url}/cflist",
+                headers={"X-Session-ID": self.session_id},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.output_text.insert(tk.END, "\n--- Conferences ---\n")
+                for conf in data.get('cflist', []):
+                    self.output_text.insert(tk.END, f"{conf}\n")
+                self.output_text.see(tk.END)
+            else:
+                error_msg = response.json().get('error', 'Unknown error')
+                self.output_text.insert(tk.END, f"\nError getting conferences: {error_msg}\n")
+                self.output_text.see(tk.END)
+                
+        except Exception as e:
+            self.output_text.insert(tk.END, f"\nError: {str(e)}\n")
+            self.output_text.see(tk.END)
 
 if __name__ == "__main__":
     root = tk.Tk()
