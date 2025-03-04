@@ -48,7 +48,13 @@ def welldate_iso8601(date_str):
     date_str = date_str.strip()
     
     # Parse the date string using datetime
-    dt = datetime.strptime(date_str, "%a %d %b %y %H:%M")
+    try:
+        dt = datetime.strptime(date_str, "%a %d %b %y %H:%M")
+    except ValueError:
+        print("Error parsing date string in utils.py: " + date_str)
+        dt = datetime.now()
+
+
     
     # Convert to ISO 8601 format
 

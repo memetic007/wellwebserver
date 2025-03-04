@@ -39,6 +39,10 @@ class WellClient:
         command_buttons_frame = tk.Frame(self.command_frame)
         command_buttons_frame.pack(fill="x", padx=5, pady=5)
         
+        # Add Get Conflist button above command input
+        self.get_conflist_button = tk.Button(command_buttons_frame, text="Get Conflist", command=self.get_full_conflist)
+        self.get_conflist_button.pack(side=tk.LEFT, padx=5)
+        
         tk.Label(command_buttons_frame, text="Command:").pack(side=tk.LEFT, padx=5)
         
         # Add extract checkbox
@@ -61,7 +65,14 @@ class WellClient:
         self.confs_button = tk.Button(button_frame, text="Confs", command=self.get_confs)
         self.confs_button.pack(side=tk.LEFT, padx=5)
         
-        tk.Label(self.command_frame, text="Output:").pack(anchor="w", padx=5, pady=5)
+        # Create frame for Output label and Clear button
+        output_frame = tk.Frame(self.command_frame)
+        output_frame.pack(fill="x", padx=5, pady=5)
+        
+        tk.Label(output_frame, text="Output:").pack(side=tk.LEFT)
+        self.clear_button = tk.Button(output_frame, text="Clear", command=self.clear_output)
+        self.clear_button.pack(side=tk.RIGHT)
+        
         self.output_text = scrolledtext.ScrolledText(self.command_frame, width=80, height=25)
         self.output_text.pack(fill="both", expand=True, padx=5, pady=5)
         
@@ -77,6 +88,10 @@ class WellClient:
         # Submit Reply button
         self.submit_reply_button = tk.Button(bottom_frame, text="Submit Reply", command=self.submit_reply)
         self.submit_reply_button.pack(side=tk.LEFT, padx=5)
+        
+        # Reconnect button
+        self.reconnect_button = tk.Button(bottom_frame, text="Reconnect", command=self.reconnect)
+        self.reconnect_button.pack(side=tk.LEFT, padx=5)
         
         # Move disconnect button to bottom frame
         self.disconnect_button = tk.Button(bottom_frame, text="Disconnect", command=self.disconnect)
@@ -100,7 +115,7 @@ class WellClient:
             response = requests.post(
                 f"{self.server_url}/connect",
                 json={"username": username, "password": password},
-                timeout=10
+                timeout=1000
             )
             
             if response.status_code == 200:
@@ -133,7 +148,7 @@ class WellClient:
                 f"{self.server_url}{endpoint}",
                 headers={"X-Session-ID": self.session_id},
                 json={"command": command},
-                timeout=30
+                timeout=1000
             )
             
             self.command_entry.delete(0, tk.END)
@@ -201,7 +216,7 @@ class WellClient:
             response = requests.get(
                 f"{self.server_url}/cflist",
                 headers={"X-Session-ID": self.session_id},
-                timeout=30
+                timeout=1000
             )
             
             if response.status_code == 200:
@@ -242,7 +257,7 @@ class WellClient:
                     "conference": "test",
                     "topic": "2264"
                 },
-                timeout=30
+                timeout=1000
             )
             
             if response.status_code == 200:
@@ -271,7 +286,7 @@ class WellClient:
             response = requests.get(
                 f"{self.server_url}/cflist",
                 headers={"X-Session-ID": self.session_id},
-                timeout=30
+                timeout=1000
             )
             
             if response.status_code == 200:
@@ -283,6 +298,86 @@ class WellClient:
             else:
                 error_msg = response.json().get('error', 'Unknown error')
                 self.output_text.insert(tk.END, f"\nError getting conferences: {error_msg}\n")
+                self.output_text.see(tk.END)
+                
+        except Exception as e:
+            self.output_text.insert(tk.END, f"\nError: {str(e)}\n")
+            self.output_text.see(tk.END)
+
+    def reconnect(self):
+        """Reconnect using stored credentials"""
+        if not hasattr(self, 'username_entry') or not hasattr(self, 'password_entry'):
+            messagebox.showerror("Error", "No stored credentials")
+            return
+            
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+        
+        if not username or not password:
+            messagebox.showerror("Error", "Missing credentials")
+            return
+            
+        try:
+            response = requests.post(
+                f"{self.server_url}/connect",
+                json={
+                    "username": username,
+                    "password": password
+                },
+                timeout=1000
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.session_id = data.get('session_id')
+                self.output_text.insert(tk.END, "\n--- Reconnected ---\n")
+                self.output_text.see(tk.END)
+            else:
+                error_msg = response.json().get('error', 'Unknown error')
+                self.output_text.insert(tk.END, f"\nReconnection failed: {error_msg}\n")
+                self.output_text.see(tk.END)
+                
+        except Exception as e:
+            self.output_text.insert(tk.END, f"\nError during reconnection: {str(e)}\n")
+            self.output_text.see(tk.END)
+
+    def clear_output(self):
+        """Clear the output text box"""
+        self.output_text.delete("1.0", tk.END)
+
+    def get_full_conflist(self):
+        """Get conflist using extractconfcontent route"""
+        if not self.session_id:
+            messagebox.showerror("Error", "Not connected to server")
+            return
+            
+        try:
+            response = requests.post(
+                f"{self.server_url}/extractconfcontent",
+                headers={"X-Session-ID": self.session_id},
+                json={"conflist": True},
+                timeout=1000
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.output_text.insert(tk.END, "\n--- Full Conference List ---\n")
+                
+                # Display the conflist from the response
+                if 'conflist' in data:
+                    for conf in data['conflist']:
+                        self.output_text.insert(tk.END, f"{conf}\n")
+                
+                # Display any output from the extract command
+                output = data.get('output', '')
+                if output:
+                    self.output_text.insert(tk.END, "\n--- Extract Output ---\n")
+                    self.output_text.insert(tk.END, output)
+                
+                self.output_text.see(tk.END)
+            else:
+                error_msg = response.json().get('error', 'Unknown error')
+                self.output_text.insert(tk.END, f"\nError getting conflist: {error_msg}\n")
                 self.output_text.see(tk.END)
                 
         except Exception as e:

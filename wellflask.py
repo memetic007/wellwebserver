@@ -139,32 +139,42 @@ def extractconfcontent():
     # Get session ID
     sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
     
-    # Get command
-    cmd = request.get_json().get('command')
-    if not cmd:
-        return jsonify({'error': 'No command provided'}), 400
-        
-    # Check if command starts with 'extract' (case insensitive)
-    first_token = cmd.split()[0] if cmd.split() else ""
-    if not first_token.lower() == "extract":
-        return jsonify({'error': 'Command must start with "extract"'}), 400
-        
+    # Get command and conflist flag
+    data = request.get_json()
+    
+    include_conflist = data.get('conflist', False)  # Default to False if not provided
+    
+    if not include_conflist:
+        #conflist is false
+        cmd = data.get('command')
+        if not cmd:
+            return jsonify({'error': 'No command provided'}), 400
+            
+        # Check if command starts with 'extract' (case insensitive)
+        first_token = cmd.split()[0] if cmd.split() else ""
+        if not first_token.lower() == "extract":
+            return jsonify({'error': 'Command must start with "extract"'}), 400
+    else:
+        #conflist is true
+        for attempt in range(2):
+            success, result = execute_ssh_command(sess_id, 'cat .cfdir/.cflist')
+            if success:
+                exit_status, conflist_out, conflist_err = result
+                if exit_status == 0:
+                    conflist = [line.strip() for line in conflist_out.splitlines() if line.strip()]
+                    break
+            if attempt == 0:
+                print("First conflist attempt failed, retrying...")
+        else:  # No successful attempt
+            return jsonify({'error': 'Failed to retrieve conference list'}), 500
+
+        # Change from spaces to commas with no spaces
+        cmd = 'extract -s -1 ' + ','.join(conflist)
+
     print("command provided to extractconfcontent: " + cmd)
 
-    # First get the conflist - try up to two times
-    for attempt in range(2):
-        success, result = execute_ssh_command(sess_id, 'cat .cfdir/.cflist')
-        if success:
-            exit_status, conflist_out, conflist_err = result
-            if exit_status == 0:
-                conflist = [line.strip() for line in conflist_out.splitlines() if line.strip()]
-                break
-        if attempt == 0:
-            print("First conflist attempt failed, retrying...")
-    else:  # No successful attempt
-        return jsonify({'error': 'Failed to retrieve conference list'}), 500
-
-    # Now execute the extract command
+           
+    # Execute the extract command
     success, result = execute_ssh_command(sess_id, cmd)
     
     if not success:
@@ -177,12 +187,16 @@ def extractconfcontent():
     # convert the line by line JSON to a single JSON object
     out = makeobjects2json.makeObjects(out)
 
-    # Return both conflist and extract output
+    # Build response
     response = {
         'exit_status': exit_status,
-        'output': out,
-        'conflist': conflist
+        'output': out
     }
+    
+    # Only include conflist in response if it was requested and retrieved
+    if include_conflist and conflist is not None:
+        response['conflist'] = conflist
+        
     if err:
         response['error_output'] = err
     return jsonify(response), 200
@@ -316,7 +330,7 @@ def execute_post_reply(ssh_client, decoded_lines, conf, topic, debug_mode=False)
         return False, f"Error in post reply: {str(e)}"
 
 @app.route('/postreply', methods=['POST'])
-def post_reply():
+def postreply():
     # Get session ID
     sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
     if not sess_id or sess_id not in sessions:
