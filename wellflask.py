@@ -252,82 +252,49 @@ def get_cflist():
     return jsonify({'cflist': cflist}), 200
 
 def execute_post_reply(ssh_client, decoded_lines, conf, topic, debug_mode=False):
-    """
-    Execute post reply using interactive shell
-    
-    Args:
-        ssh_client: Paramiko SSH client
-        decoded_lines: List of lines to post
-        conf: Conference name
-        topic: Topic number
-        debug_mode: Enable debug output
-        
-    Returns:
-        tuple: (success, result)
-            - If success is True, result contains output buffer
-            - If success is False, result contains error message
-    """
     try:
-        # Open channel for interactive shell
-        channel = ssh_client.invoke_shell()
+        # new simpler approach
+        command = f"post -n {conf} {topic}\n"
+        stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
+
+        # Write multiple lines to stdin
+        for line in decoded_lines:
+            stdin.write(line + "\n")
+        stdin.write(".\n")
+        # Ensure all data is sent
+        stdin.flush()
+
+        # Close the stdin channel
+        stdin.close()   
+
+        # Read output and handle bad characters with replacement
+        output = stdout.read().decode("utf-8", errors='replace')
+        error_output = stderr.read().decode("utf-8", errors='replace')
+
+        # Check for common error patterns
+        error_patterns = [
+            "error", "invalid", "failed", "denied", "not found",
+            "cannot", "unauthorized", "permission denied"
+        ]
         
-        # Buffer for received data
-        output_buffer = ""
-        
-        # Flag to track if we've seen the "ok (" pattern
-        ok_pattern_seen = False
-        
-        # Wait for initial response
-        while True:
-            if channel.recv_ready():
-                data = channel.recv(4096).decode("utf-8", errors="replace")
-                output_buffer += data
-                
-                if debug_mode:
-                    print(data, end="", flush=True)
-                
-                # Check for "ok (" pattern (case insensitive)
-                if not ok_pattern_seen and re.search(r"ok \(", data, re.IGNORECASE):
-                    ok_pattern_seen = True
-                    
-                    # Wait 300ms
-                    time.sleep(0.3)
-                    
-                    # Send "post conf topic" with newline
-                    channel.send(f"!post -n {conf} {topic}\n")
-                    
-                    # Wait 300ms
-                    time.sleep(0.3)
-                    
-                    # Send each line with newline, wait 50ms after each
-                    for line in decoded_lines:
-                        channel.send(f"{line}\n")
-                        time.sleep(0.05)
-                    
-                    # Send single dot with newline
-                    channel.send(".\n")
-                    
-                    # Wait 100ms to collect final output
-                    time.sleep(0.1)
-                    break
+        # Check stderr first
+        if error_output:
+            return False, f"Command error: {error_output}"
             
-            # Prevent CPU hogging
-            time.sleep(0.1)
-        
-        # Collect any remaining output
-        time.sleep(0.1)
-        while channel.recv_ready():
-            data = channel.recv(4096).decode("utf-8", errors="replace")
-            output_buffer += data
-            
-            if debug_mode:
-                print(data, end="", flush=True)
-                
-        channel.close()
-        return True, output_buffer
-        
+        # Check stdout for error patterns
+        output_lower = output.lower()
+        for pattern in error_patterns:
+            if pattern in output_lower:
+                return False, f"Operation failed: {output}"
+
+        # Check exit status
+        if stdout.channel.recv_exit_status() != 0:
+            return False, f"Command failed with non-zero exit status: {output}"
+
+        return True, output
+
     except Exception as e:
-        return False, f"Error in post reply: {str(e)}"
+        return False, f"Error executing post command: {str(e)}"
 
 @app.route('/postreply', methods=['POST'])
 def postreply():
