@@ -157,7 +157,7 @@ def extractconfcontent():
     else:
         #conflist is true
         for attempt in range(2):
-            success, result = execute_ssh_command(sess_id, 'cat .cfdir/.cflist')
+            success, result = execute_ssh_command(sess_id, 'cat .cfdir/.wscflist')
             if success:
                 exit_status, conflist_out, conflist_err = result
                 if exit_status == 0:
@@ -169,7 +169,7 @@ def extractconfcontent():
             return jsonify({'error': 'Failed to retrieve conference list'}), 500
 
         # Change from spaces to commas with no spaces
-        cmd = 'extract -s -1 ' + ','.join(conflist)
+        cmd = 'extract -np ' + ','.join(conflist)
 
     print("command provided to extractconfcontent: " + cmd)
 
@@ -185,7 +185,12 @@ def extractconfcontent():
     out = extract2json.processrawextract(out)
     
     # convert the line by line JSON to a single JSON object
-    out = makeobjects2json.makeObjects(out)
+    
+    if include_conflist:
+        out = makeobjects2json.makeObjects(out,conflist)
+    else:
+        conflist = []
+        out = makeobjects2json.makeObjects(out,conflist)
 
     # Build response
     response = {
@@ -234,7 +239,7 @@ def get_cflist():
     sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
     
     # Execute command using helper function
-    success, result = execute_ssh_command(sess_id, 'cat .cfdir/.cflist')
+    success, result = execute_ssh_command(sess_id, 'cat .cfdir/.wscflist')                                     
     
     if not success:
         return jsonify({'error': result}), 401

@@ -4,7 +4,7 @@ import json
 from classes import Post, Topic, Conf
 
 
-def makeObjects(input_text):
+def makeObjects(input_text,conflist):
     
     # Parse the input text as JSON
     lines = []
@@ -56,7 +56,19 @@ def makeObjects(input_text):
         elif line['type'] == 'posttext':
             currentpost.append_text(line['text'])
         else:
-            print(f"Unknown line type: {line['type']}")    
+            print(f"Unknown line type: {line['type']}")  
+    
+    if len(conflist) > 0:
+        for testconf in conflist:
+            # Check if testconf matches the beginning of any conference name in the confs list
+            if not any(conf.name.startswith(testconf) for conf in confs):
+                newconf = Conf.create_empty()
+                newconf.name = testconf
+                newconf.handle = testconf
+                confs.append(newconf)
+
+
+
     # create json output
     
     # Format JSON with proper indentation
