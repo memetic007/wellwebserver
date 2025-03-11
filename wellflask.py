@@ -386,6 +386,9 @@ def execute_put_cflist(ssh_client, cflist_lines):
         for line in cflist_lines:
             stdin.write(line + "\n")
             
+        # Send Control-D character to signal end of input
+        stdin.write('\x04')
+            
         # Ensure all data is sent
         stdin.flush()
 
