@@ -379,21 +379,28 @@ def postreply():
 
 def execute_put_cflist(ssh_client, cflist_lines):
     try:
-        command = "cat > .cfdir/.wscflist"
+        command = "cat > dump"
         stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
 
-        # Write each line to stdin
-        for line in cflist_lines:
-            stdin.write(line + "\n")
-            
-        # Send Control-D character to signal end of input
-        stdin.write('\x04')
-            
-        # Ensure all data is sent
-        stdin.flush()
+        # Wait for channel to be ready
+        time.sleep(0.1)
+        
+        # Check if channel is ready
+        if not stdin.channel.send_ready():
+            return False, "Channel not ready for writing"
 
-        # Close the stdin channel
-        stdin.close()
+        try:
+            # Write each line to stdin using channel.send directly
+            for line in cflist_lines:
+                stdin.channel.send(line + "\n")
+                
+            # Close the stdin channel to signal end of input
+            stdin.channel.shutdown_write()
+            stdin.close()
+        except IOError as e:
+            return False, f"IO Error while writing: {str(e)}"
+        except Exception as e:
+            return False, f"Error during write operation: {str(e)}"
 
         # Read output and handle bad characters with replacement
         output = stdout.read().decode("utf-8", errors='replace')
@@ -407,7 +414,7 @@ def execute_put_cflist(ssh_client, cflist_lines):
         if stdout.channel.recv_exit_status() != 0:
             return False, f"Command failed with non-zero exit status: {output}"
 
-        return True, "Successfully updated .wscflist"
+        return True, "Successfully updated dump file"
 
     except Exception as e:
         return False, f"Error executing put_cflist command: {str(e)}"
