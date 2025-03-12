@@ -379,42 +379,50 @@ def postreply():
 
 def execute_put_cflist(ssh_client, cflist_lines):
     try:
-        command = "cat > dump"
-        stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
-
-        # Wait for channel to be ready
-        time.sleep(0.1)
+        # Combine the list into a single string with newlines
+        file_contents = '\n'.join(cflist_lines) + '\n'
         
-        # Check if channel is ready
-        if not stdin.channel.send_ready():
-            return False, "Channel not ready for writing"
+        try:
+            sftp = ssh_client.open_sftp()
+        except Exception as e:
+            return False, f"Failed to open SFTP connection: {str(e)}"
 
         try:
-            # Write each line to stdin using channel.send directly
-            for line in cflist_lines:
-                stdin.channel.send(line + "\n")
-                
-            # Close the stdin channel to signal end of input
-            stdin.channel.shutdown_write()
-            stdin.close()
-        except IOError as e:
-            return False, f"IO Error while writing: {str(e)}"
-        except Exception as e:
-            return False, f"Error during write operation: {str(e)}"
+            # Resolve the relative path to the absolute home directory path
+            try:
+                home_dir = sftp.normalize('.')
+            except Exception as e:
+                return False, f"Failed to resolve home directory: {str(e)}"
 
-        # Read output and handle bad characters with replacement
-        output = stdout.read().decode("utf-8", errors='replace')
-        error_output = stderr.read().decode("utf-8", errors='replace')
+            remote_filepath = f"{home_dir}/.cfdir/.wscflist"
+            
+            # Check if .cfdir exists
+            try:
+                sftp.stat(f"{home_dir}/.cfdir")
+            except FileNotFoundError:
+                return False, "Directory .cfdir not found"
+            except Exception as e:
+                return False, f"Error checking .cfdir: {str(e)}"
+              
+            # Write content directly to remote file
+            try:
+                with sftp.file(remote_filepath, 'w') as remote_file:
+                    remote_file.write(file_contents)
+            except PermissionError:
+                return False, f"Permission denied writing to {remote_filepath}"
+            except IOError as e:
+                return False, f"IO Error writing to file: {str(e)}"
+            except Exception as e:
+                return False, f"Error writing to file: {str(e)}"
 
-        # Check stderr first
-        if error_output:
-            return False, f"Command error: {error_output}"
+        finally:
+            # Always try to close SFTP
+            try:
+                sftp.close()
+            except:
+                pass  # Ignore errors during close
 
-        # Check exit status
-        if stdout.channel.recv_exit_status() != 0:
-            return False, f"Command failed with non-zero exit status: {output}"
-
-        return True, "Successfully updated dump file"
+        return True, "Successfully updated conference list"
 
     except Exception as e:
         return False, f"Error executing put_cflist command: {str(e)}"
