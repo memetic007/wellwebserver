@@ -240,6 +240,7 @@ def get_cflist():
     sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
     
     # Execute command using helper function
+
     success, result = execute_ssh_command(sess_id, 'cat .cfdir/.wscflist')                                     
     
     if not success:
@@ -248,10 +249,15 @@ def get_cflist():
     exit_status, output, error = result
     
     if exit_status != 0 or error:
-        return jsonify({
-            'error': 'Failed to read cflist',
-            'details': error or 'Unknown error'
-        }), 500
+        # if file doesn't exist, return empty list
+        if "No such file" in error:
+            cflist = []
+            return jsonify({'cflist': cflist}), 200
+        else:
+            return jsonify({
+                'error': 'Failed to read cflist',
+                'details': error or 'Unknown error'
+            }), 500
 
     # Format the output specific to cflist
     cflist = [line.strip() for line in output.splitlines() if line.strip()]
