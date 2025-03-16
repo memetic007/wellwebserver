@@ -30,12 +30,15 @@ def conffromhandle(handle):
     tokens = handle.split(".")
     
     
-    if len(tokens) > 1:
+    if len(tokens) == 2:
         conf = tokens[0]
+        return conf
+    elif len(tokens) == 3:
+        conf = tokens[0] + "." + tokens[1]
         return conf
     else:
         return None
-
+    
 def topicfromhandle(handle):
     tokens = handle.split(".")
     if len(tokens) > 1:

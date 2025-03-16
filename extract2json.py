@@ -98,7 +98,8 @@ def processrawextract(input_text):
                 else:
                     current_handle = "headerHandleError"
                 
-                if current_handle.count('.') == 1:
+                current_handle_tokens = current_handle.split('.')
+                if len(current_handle_tokens) == 2 or (len(current_handle_tokens) == 3 and current_handle_tokens[1] == "ind"):
                     dictType = "topicheader"
                     dictTimeDate = ""
                     current_username = ""
@@ -106,7 +107,7 @@ def processrawextract(input_text):
                     current_topic = current_handle
                     current_title = getTitle(line)
 
-                elif current_handle.count('.') == 2:
+                elif (len(current_handle_tokens) == 3 and current_handle_tokens[1] != "ind") or len(current_handle_tokens) == 4:
                     dictType = "postheader"
                     dictTimeDate = getDateFromTopicHeader(tokens)   
                     current_datetime = dictTimeDate
