@@ -6,6 +6,7 @@ import extract2json
 import makeobjects2json
 import sys
 import utils
+import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '397397397'  # for session cookies
@@ -165,7 +166,7 @@ def extractconfcontent():
             if success:
                 exit_status, conflist_out, conflist_err = result
                 if exit_status == 0:
-                    conflist = [line.strip() for line in conflist_out.splitlines() if line.strip()]
+                    conflist = [line.strip() for line in conflist_out.splitlines() if line.strip() and '#' not in line]
                     break
             if attempt == 0:
                 print("First conflist attempt failed, retrying...")
@@ -199,7 +200,8 @@ def extractconfcontent():
     # Build response
     response = {
         'exit_status': exit_status,
-        'output': out
+        'output': out,
+        'data': json.loads(out)  # Parse the JSON string back to an object and include it in the response
     }
     
     # Only include conflist in response if it was requested and retrieved
