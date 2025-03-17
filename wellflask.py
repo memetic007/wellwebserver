@@ -5,6 +5,7 @@ import re
 import extract2json
 import makeobjects2json
 import sys
+import utils
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '397397397'  # for session cookies
@@ -16,6 +17,8 @@ HARDCODED_HOST = "user.dev.well.com" if "-welltest" in sys.argv else "well.com"
 sessions = {}  # { session_id: { 'ssh': SSHClient, 'creds': {host, user, pwd}, 'last_active': time.time() } }
 
 # Helper: cleanup idle sessions (could be called periodically or each request)
+
+
 def cleanup_idle_sessions():
     now = time.time()
     to_close = [sid for sid, data in sessions.items() if now - data['last_active'] > 1800]
@@ -370,8 +373,44 @@ def postreply():
         if not success:
             return jsonify({'error': result}), 500
             
-        # Update last active time
-        sessions[sess_id]['last_active'] = time.time()
+        # Check if hide parameter is exactly True and if so find post and hide it
+        if data.get('hide') is True:
+            
+            command = f"extract -u {data['username']} {data['conference']} {data['topic']}"
+            success, extract_result = execute_ssh_command(sess_id, command)
+            if success:
+
+                out = extract_result[1]
+                outlines = out.splitlines()
+                
+                # Process lines from bottom to top (reverse order)
+                for line in reversed(outlines):
+                    # Check if the line is not empty and first character is not whitespace
+                    if line and not line[0].isspace():
+                        # Split the line into tokens
+                        tokens = line.split()
+                        if tokens:
+                            # Set handle to the first token
+                            handle = tokens[0]
+                            # Remove colon if present
+                            if handle.endswith(':'):
+                                handle = handle[:-1]
+                            
+                            conf,topic,post = utils.conf_topic_post(handle)
+                            command = f"post -h {conf} {topic} {post}"
+                            success, result = execute_ssh_command(sess_id, command)
+                            if success:
+                                print(f"Successfully hid post: {post}")
+                            else:
+                                print(f"Failed to hide post: {post}")
+                            
+                            # Break out of the loop after processing a post
+                            break
+
+                           
+                        
+                # Update last active time
+                sessions[sess_id]['last_active'] = time.time()
         
         return jsonify({
             'success': True,

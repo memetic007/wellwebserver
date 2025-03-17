@@ -25,6 +25,17 @@ def checkArg(arg):
                 return True
     return False
 
+def conf_topic_post(handle):
+    # handle is in the form of conf.topic.post or conf.ind.topic.post
+    
+    tokens = handle.split(".")
+    if len(tokens) ==3:
+        return tokens[0], tokens[1], tokens[2]
+    elif len(tokens) == 4:
+        return tokens[0] + "." + tokens[1], tokens[2], tokens[3]
+    else:
+        return None, None, None
+
 def conffromhandle(handle):
 
     tokens = handle.split(".")
@@ -38,7 +49,7 @@ def conffromhandle(handle):
         return conf
     else:
         return None
-    
+
 def topicfromhandle(handle):
     tokens = handle.split(".")
     if len(tokens) > 1:
