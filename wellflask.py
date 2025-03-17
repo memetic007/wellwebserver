@@ -376,7 +376,7 @@ def postreply():
         # Check if hide parameter is exactly True and if so find post and hide it
         if data.get('hide') is True:
             
-            command = f"extract -u {data['username']} {data['conference']} {data['topic']}"
+            command = f"extract -s -1 -u {data['username']} {data['conference']} {data['topic']}"
             success, extract_result = execute_ssh_command(sess_id, command)
             if success:
 
@@ -398,7 +398,7 @@ def postreply():
                             
                             conf,topic,post = utils.conf_topic_post(handle)
                             command = f"post -h {conf} {topic} {post}"
-                            success, result = execute_ssh_command(sess_id, command)
+                            success, postresult = execute_ssh_command(sess_id, command)
                             if success:
                                 print(f"Successfully hid post: {post}")
                             else:
