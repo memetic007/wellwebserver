@@ -77,7 +77,7 @@ def execute_ssh_command(sess_id, command):
             return False, f'Connection lost and reconnect failed: {str(e2)}'
 
     # Read command output
-    exit_status = stdout.channel.recv_exit_status()
+    # exit_status = stdout.channel.recv_exit_status()
     out = stdout.read().decode(errors='replace')
     err = stderr.read().decode(errors='replace')
     
@@ -424,10 +424,23 @@ def postreply():
             'error': f'Failed to process post reply: {str(e)}'
         }), 500
 
-def execute_put_cflist(ssh_client, cflist_lines):
+def execute_sftp_put_file(ssh_client, relative_path, content_lines):
+    """
+    Transfers file content to a remote path using SFTP.
+    
+    Args:
+        ssh_client: The SSH client to use for connection
+        relative_path: The path relative to home directory where the file should be created/updated
+        content_lines: List of strings to be written to the file
+        
+    Returns:
+        tuple: (success, message)
+    """
     try:
         # Combine the list into a single string with newlines
-        file_contents = '\n'.join(cflist_lines) + '\n'
+        file_contents = '\n'.join(content_lines)
+        if not file_contents.endswith('\n'):
+            file_contents += '\n'
         
         try:
             sftp = ssh_client.open_sftp()
@@ -441,15 +454,24 @@ def execute_put_cflist(ssh_client, cflist_lines):
             except Exception as e:
                 return False, f"Failed to resolve home directory: {str(e)}"
 
-            remote_filepath = f"{home_dir}/.cfdir/.wscflist"
+            # Make sure path is treated as relative to home
+            if relative_path.startswith('/'):
+                relative_path = relative_path[1:]
             
-            # Check if .cfdir exists
+            remote_filepath = f"{home_dir}/{relative_path}"
+            
+            # Make sure directory exists
             try:
-                sftp.stat(f"{home_dir}/.cfdir")
-            except FileNotFoundError:
-                return False, "Directory .cfdir not found"
+                dir_path = os.path.dirname(remote_filepath)
+                if dir_path and dir_path != home_dir:
+                    try:
+                        sftp.stat(dir_path)
+                    except FileNotFoundError:
+                        return False, f"Directory {dir_path} not found"
+                    except Exception as e:
+                        return False, f"Error checking directory {dir_path}: {str(e)}"
             except Exception as e:
-                return False, f"Error checking .cfdir: {str(e)}"
+                return False, f"Error processing directory path: {str(e)}"
               
             # Write content directly to remote file
             try:
@@ -469,10 +491,14 @@ def execute_put_cflist(ssh_client, cflist_lines):
             except:
                 pass  # Ignore errors during close
 
-        return True, "Successfully updated conference list"
+        return True, f"Successfully transferred file to {relative_path}"
 
     except Exception as e:
-        return False, f"Error executing put_cflist command: {str(e)}"
+        return False, f"Error executing SFTP file transfer: {str(e)}"
+
+def execute_put_cflist(ssh_client, cflist_lines):
+    """Legacy function that uses the new generalized function"""
+    return execute_sftp_put_file(ssh_client, '.cfdir/.wscflist', cflist_lines)
 
 @app.route('/put_cflist', methods=['POST'])
 def put_cflist():
@@ -491,9 +517,9 @@ def put_cflist():
         return jsonify({'error': 'cflist must be a list of strings'}), 400
         
     try:
-        # Get SSH client and try to update cflist
+        # Get SSH client and try to update cflist using the generalized function
         ssh_client = sessions[sess_id]['ssh']
-        success, result = execute_put_cflist(ssh_client, cflist)
+        success, result = execute_sftp_put_file(ssh_client, '.cfdir/.wscflist', cflist)
         
         # If failed, try to reconnect and retry once
         if not success:
@@ -516,7 +542,7 @@ def put_cflist():
                 sessions[sess_id]['ssh'] = ssh_client
                 
                 # Try update again
-                success, result = execute_put_cflist(ssh_client, cflist)
+                success, result = execute_sftp_put_file(ssh_client, '.cfdir/.wscflist', cflist)
                 
             except Exception as e:
                 return jsonify({'error': f'Reconnection failed: {str(e)}'}), 500
@@ -535,6 +561,85 @@ def put_cflist():
     except Exception as e:
         return jsonify({
             'error': f'Failed to process put_cflist: {str(e)}'
+        }), 500
+
+@app.route('/forget', methods=['POST'])
+def forget():
+    # Get session ID
+    sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
+    if not sess_id or sess_id not in sessions:
+        return jsonify({'error': 'No active session. Please connect first.'}), 401
+        
+    # Get request data
+    data = request.get_json()
+    if not all(k in data for k in ['conference', 'topic']):
+        return jsonify({'error': 'Missing required parameters. Need conference and topic.'}), 400
+        
+    conference = data['conference']
+    topic = data['topic']
+    
+    # Create content with just the two required lines
+    formatted_content = [
+        conference,             # First line: conference name
+        f"forget {topic}"     # Second line: "forget topic"
+    ]
+    
+    try:
+        # Get SSH client and try to update the forget file
+        ssh_client = sessions[sess_id]['ssh']
+        success, result = execute_sftp_put_file(ssh_client, '.wsforget', formatted_content)
+        
+        # If failed, try to reconnect and retry once
+        if not success:
+            try:
+                # Get stored credentials
+                creds = sessions[sess_id]['creds']
+                
+                # Close old connection
+                try:
+                    ssh_client.close()
+                except:
+                    pass
+                
+                # Create new connection
+                ssh_client = paramiko.SSHClient()
+                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh_client.connect(**creds)
+                
+                # Store new connection
+                sessions[sess_id]['ssh'] = ssh_client
+                
+                # Try update again
+                success, result = execute_sftp_put_file(ssh_client, '.wsforget', formatted_content)
+                
+            except Exception as e:
+                return jsonify({'error': f'Reconnection failed: {str(e)}'}), 500
+        
+        if not success:
+            return jsonify({'error': result}), 500
+            
+        # Update last active time
+        sessions[sess_id]['last_active'] = time.time()
+        
+        # Execute the "g < .wsforget" command
+        g_command = "g < .wsforget"
+        g_success, g_result = execute_ssh_command(sess_id, g_command)
+        if not g_success:
+            print(f"Error: Failed to execute '{g_command}': {g_result}")
+            return jsonify({
+                'error': f"forget not executed: {g_result}"
+            }), 500
+
+        return jsonify({
+            'success': True,
+            'conference': conference,
+            'topic': topic,
+            'message': f"Successfully stored forget data for {conference}.{topic}"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to process forget request: {str(e)}'
         }), 500
 
 # Add this after all your route definitions (just before if __name__ == '__main__':)
