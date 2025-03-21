@@ -564,8 +564,8 @@ def put_cflist():
             'error': f'Failed to process put_cflist: {str(e)}'
         }), 500
 
-@app.route('/forget', methods=['POST'])
-def forget():
+@app.route('/forget_remember', methods=['POST'])
+def forget_remember():
     # Get session ID
     sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
     if not sess_id or sess_id not in sessions:
@@ -578,6 +578,10 @@ def forget():
         
     conference = data['conference']
     topic = data['topic']
+    option = data.get('option', 'forget')  # Default to 'forget' if not specified
+    
+    if option not in ['forget', 'remember']:
+        return jsonify({'error': 'Option must be either "forget" or "remember"'}), 400
     
     try:
         # Get SSH client
@@ -608,8 +612,8 @@ def forget():
         # Wait for next "Ok (" prompt
         wait_for_prompt()
             
-        # Send forget command
-        channel.send(f"forget {topic}\n")
+        # Send forget/remember command based on option
+        channel.send(f"{option} {topic}\n")
         
         # Flush the channel
         channel.send('\n')
@@ -627,7 +631,8 @@ def forget():
             'success': True,
             'conference': conference,
             'topic': topic,
-            'message': f"Successfully executed forget for {conference}.{topic}"
+            'option': option,
+            'message': f"Successfully executed {option} for {conference}.{topic}"
         }), 200
         
     except TimeoutError as e:
@@ -636,7 +641,7 @@ def forget():
         }), 500
     except Exception as e:
         return jsonify({
-            'error': f'Failed to process forget request: {str(e)}'
+            'error': f'Failed to process {option} request: {str(e)}'
         }), 500
 
 # Add this after all your route definitions (just before if __name__ == '__main__':)
