@@ -59,6 +59,9 @@ def execute_ssh_command(sess_id, command):
     ssh_client = sessions[sess_id]['ssh']
     try:
         stdin, stdout, stderr = ssh_client.exec_command(command)
+        exit_status = stdout.channel.recv_exit_status()
+        out = stdout.read().decode(errors='replace')
+        err = stderr.read().decode(errors='replace')
     except Exception as e:
         # Attempt reconnect on failure
         creds = sessions[sess_id]['creds']
@@ -73,14 +76,12 @@ def execute_ssh_command(sess_id, command):
             ssh_client.connect(**creds)
             sessions[sess_id]['ssh'] = ssh_client
             stdin, stdout, stderr = ssh_client.exec_command(command)
+            exit_status = stdout.channel.recv_exit_status()
+            out = stdout.read().decode(errors='replace')
+            err = stderr.read().decode(errors='replace')
         except Exception as e2:
             return False, f'Connection lost and reconnect failed: {str(e2)}'
 
-    # Read command output
-    # exit_status = stdout.channel.recv_exit_status()
-    out = stdout.read().decode(errors='replace')
-    err = stderr.read().decode(errors='replace')
-    
     # Update last active time
     sessions[sess_id]['last_active'] = time.time()
     
@@ -578,65 +579,61 @@ def forget():
     conference = data['conference']
     topic = data['topic']
     
-    # Create content with just the two required lines
-    formatted_content = [
-        conference,             # First line: conference name
-        f"forget {topic}"     # Second line: "forget topic"
-    ]
-    
     try:
-        # Get SSH client and try to update the forget file
+        # Get SSH client
         ssh_client = sessions[sess_id]['ssh']
-        success, result = execute_sftp_put_file(ssh_client, '.wsforget', formatted_content)
         
-        # If failed, try to reconnect and retry once
-        if not success:
-            try:
-                # Get stored credentials
-                creds = sessions[sess_id]['creds']
-                
-                # Close old connection
-                try:
-                    ssh_client.close()
-                except:
-                    pass
-                
-                # Create new connection
-                ssh_client = paramiko.SSHClient()
-                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh_client.connect(**creds)
-                
-                # Store new connection
-                sessions[sess_id]['ssh'] = ssh_client
-                
-                # Try update again
-                success, result = execute_sftp_put_file(ssh_client, '.wsforget', formatted_content)
-                
-            except Exception as e:
-                return jsonify({'error': f'Reconnection failed: {str(e)}'}), 500
+        # Start interactive session
+        channel = ssh_client.invoke_shell()
         
-        if not success:
-            return jsonify({'error': result}), 500
+        # Function to wait for prompt with timeout
+        def wait_for_prompt(timeout=5):
+            start_time = time.time()
+            buff = ''
+            while 'ok (' not in buff.lower():
+                if time.time() - start_time > timeout:
+                    raise TimeoutError("Timed out waiting for prompt")
+                if channel.recv_ready():
+                    resp = channel.recv(9999)
+                    buff += resp.decode('utf-8', errors='replace')
+                time.sleep(0.1)
+            return buff
             
+        # Wait for initial "Ok (" prompt
+        wait_for_prompt()
+            
+        # Send g conference command
+        channel.send(f"g {conference}\n")
+        
+        # Wait for next "Ok (" prompt
+        wait_for_prompt()
+            
+        # Send forget command
+        channel.send(f"forget {topic}\n")
+        
+        # Flush the channel
+        channel.send('\n')
+        
+        # Wait 250ms
+        time.sleep(0.25)
+        
+        # Close the channel
+        channel.close()
+        
         # Update last active time
         sessions[sess_id]['last_active'] = time.time()
         
-        # Execute the "g < .wsforget" command
-        g_command = "g < .wsforget"
-        g_success, g_result = execute_ssh_command(sess_id, g_command)
-        if not g_success:
-            print(f"Error: Failed to execute '{g_command}': {g_result}")
-            return jsonify({
-                'error': f"forget not executed: {g_result}"
-            }), 500
-
         return jsonify({
             'success': True,
             'conference': conference,
             'topic': topic,
-            'message': f"Successfully stored forget data for {conference}.{topic}"
+            'message': f"Successfully executed forget for {conference}.{topic}"
         }), 200
         
+    except TimeoutError as e:
+        return jsonify({
+            'error': f'Timeout waiting for system response: {str(e)}'
+        }), 500
     except Exception as e:
         return jsonify({
             'error': f'Failed to process forget request: {str(e)}'
