@@ -269,10 +269,57 @@ def get_cflist():
     cflist = [line.strip() for line in output.splitlines() if line.strip()]
     return jsonify({'cflist': cflist}), 200
 
-def execute_post_reply(ssh_client, decoded_lines, conf, topic, debug_mode=False):
+def execute_new_topic(ssh_client, decode_lines,conf,title):
+        
     try:
-        # new simpler approach
+       
+        
+        # Start interactive session
+        channel = ssh_client.invoke_shell()
+        
+        # Function to wait for prompt with timeout
+        def wait_for_prompt(timeout=5):
+            start_time = time.time()
+            buff = ''
+            while 'ok (' not in buff.lower():
+                if time.time() - start_time > timeout:
+                    raise TimeoutError("Timed out waiting for prompt")
+                if channel.recv_ready():
+                    resp = channel.recv(9999)
+                    buff += resp.decode('utf-8', errors='replace')
+                time.sleep(0.1)
+            return buff
+            
+        # Wait for initial "Ok (" prompt
+        wait_for_prompt()
+            
+        # Send g conference command
+        channel.send(f"!post -e \"{title}\" {conf}\n")
+        time.sleep(0.1)
+        for line in decode_lines:
+            channel.send(line + "\n")
+            
+        channel.send(".\n")
+
+        time.sleep(0.25)
+        
+        channel.close()
+        
+        return True, f"Successfully created new topic: {title}"
+    except Exception as e:
+        # Update last active time
+        
+        return False, f"Error creating new topic: {str(e)}"
+       
+        
+
+
+def execute_post_reply(ssh_client, decoded_lines, conf, topic, debug_mode=False, option='post', title=''):
+    try:
+        # Choose command based on option
+        
         command = f"post -n {conf} {topic}\n"
+        
         stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
 
         # Write multiple lines to stdin
@@ -326,104 +373,137 @@ def postreply():
     if not all(k in data for k in ['base64_content', 'conference', 'topic']):
         return jsonify({'error': 'Missing required parameters'}), 400
         
-    try:
-        # Decode base64 content
-        decoded_content = base64.b64decode(data['base64_content']).decode("utf-8")
-        lines = decoded_content.strip().split('\n')
+    # Get optional parameters with defaults
+    option = data.get('option', 'post')
+    title = data.get('title', '').strip()
+    
+    # Validate option
+    if option not in ['post', 'newtopic']:
+        return jsonify({'error': 'Invalid option. Must be "post" or "newtopic"'}), 400
         
-        # Get SSH client and try post reply
-        ssh_client = sessions[sess_id]['ssh']
-        success, result = execute_post_reply(
-            ssh_client, 
-            lines,
-            data['conference'],
-            data['topic'],
-            debug_mode=app.debug
-        )
+    # Validate title for newtopic
+    if option == 'newtopic' and not title:
+        return jsonify({'error': 'Title is required for newtopic option'}), 400
+     
+    # Decode base64 content
+    decoded_content = base64.b64decode(data['base64_content']).decode("utf-8")
+    lines = decoded_content.strip().split('\n')  
+    
+    if option == 'post':
         
-        # If failed, try to reconnect and retry once
-        if not success and "Error in post reply" in result:
-            try:
-                # Get stored credentials
-                creds = sessions[sess_id]['creds']
-                
-                # Close old connection
+
+        try:
+           
+            
+            
+            # Get SSH client and try post reply
+            ssh_client = sessions[sess_id]['ssh']
+            success, result = execute_post_reply(
+                ssh_client, 
+                lines,
+                data['conference'],
+                data['topic'],
+                debug_mode=app.debug,
+                option=option,
+                title=title
+            )
+            
+            # If failed, try to reconnect and retry once
+            if not success and "Error in post reply" in result:
                 try:
-                    ssh_client.close()
-                except:
-                    pass
+                    # Get stored credentials
+                    creds = sessions[sess_id]['creds']
+                    
+                    # Close old connection
+                    try:
+                        ssh_client.close()
+                    except:
+                        pass
+                    
+                    # Create new connection
+                    ssh_client = paramiko.SSHClient()
+                    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh_client.connect(**creds)
+                    
+                    # Store new connection
+                    sessions[sess_id]['ssh'] = ssh_client
+                    
+                    # Try post reply again
+                    success, result = execute_post_reply(
+                        ssh_client,
+                        lines,
+                        data['conference'],
+                        data['topic'],
+                        debug_mode=app.debug,
+                        option=option,
+                        title=title
+                    )
+                    
+                except Exception as e:
+                    return jsonify({'error': f'Reconnection failed: {str(e)}'}), 500
+            
+            if not success:
+                return jsonify({'error': result}), 500
                 
-                # Create new connection
-                ssh_client = paramiko.SSHClient()
-                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh_client.connect(**creds)
+            # Check if hide parameter is exactly True and if so find post and hide it
+            doHide = data.get('hide')
+            if doHide is True:
+                #find the post and hide it
+                command = f"extract -s -1 -u {data['username']} {data['conference']} {data['topic']}"
+                success, extract_result = execute_ssh_command(sess_id, command)
+                if success:
+
+                    out = extract_result[1]
+                    outlines = out.splitlines()
+                    
+                    # Process lines from bottom to top (reverse order)
+                    for line in reversed(outlines):
+                        # Check if the line is not empty and first character is not whitespace
+                        if line and not line[0].isspace():
+                            # Split the line into tokens
+                            tokens = line.split()
+                            if tokens:
+                                # Set handle to the first token
+                                handle = tokens[0]
+                                # Remove colon if present
+                                if handle.endswith(':'):
+                                    handle = handle[:-1]
+                                
+                                conf,topic,post = utils.conf_topic_post(handle)
+                                command = f"post -h {conf} {topic} {post}"
+                                success, postresult = execute_ssh_command(sess_id, command)
+                                if success:
+                                    print(f"Successfully hid post: {post}")
+                                else:
+                                    print(f"Failed to hide post: {post}")
+                                
+                                # Break out of the loop after processing a post
+                                break
+
+                            
+                            
+                    # Update last active time
+                    sessions[sess_id]['last_active'] = time.time()
+            
+            return jsonify({
+                'success': True,
+                'output': result
+            }), 200
                 
-                # Store new connection
-                sessions[sess_id]['ssh'] = ssh_client
-                
-                # Try post reply again
-                success, result = execute_post_reply(
-                    ssh_client,
-                    lines,
-                    data['conference'],
-                    data['topic'],
-                    debug_mode=app.debug
-                )
-                
-            except Exception as e:
-                return jsonify({'error': f'Reconnection failed: {str(e)}'}), 500
-        
+        except Exception as e:
+            return jsonify({
+                'error': f'Failed to process post reply: {str(e)}'
+            }), 500
+
+    elif option == 'newtopic':
+        ssh_client = sessions[sess_id]['ssh']
+        conference = data['conference']
+        success, result = execute_new_topic(ssh_client, lines,conference,title)
         if not success:
             return jsonify({'error': result}), 500
-            
-        # Check if hide parameter is exactly True and if so find post and hide it
-        if data.get('hide') is True:
-            
-            command = f"extract -s -1 -u {data['username']} {data['conference']} {data['topic']}"
-            success, extract_result = execute_ssh_command(sess_id, command)
-            if success:
-
-                out = extract_result[1]
-                outlines = out.splitlines()
-                
-                # Process lines from bottom to top (reverse order)
-                for line in reversed(outlines):
-                    # Check if the line is not empty and first character is not whitespace
-                    if line and not line[0].isspace():
-                        # Split the line into tokens
-                        tokens = line.split()
-                        if tokens:
-                            # Set handle to the first token
-                            handle = tokens[0]
-                            # Remove colon if present
-                            if handle.endswith(':'):
-                                handle = handle[:-1]
-                            
-                            conf,topic,post = utils.conf_topic_post(handle)
-                            command = f"post -h {conf} {topic} {post}"
-                            success, postresult = execute_ssh_command(sess_id, command)
-                            if success:
-                                print(f"Successfully hid post: {post}")
-                            else:
-                                print(f"Failed to hide post: {post}")
-                            
-                            # Break out of the loop after processing a post
-                            break
-
-                           
-                        
-                # Update last active time
-                sessions[sess_id]['last_active'] = time.time()
+        else:
+            return jsonify({'success': True, 'output': result}), 200
         
-        return jsonify({
-            'success': True,
-            'output': result
-        }), 200
-        
-    except Exception as e:
-        return jsonify({
-            'error': f'Failed to process post reply: {str(e)}'
-        }), 500
 
 def execute_sftp_put_file(ssh_client, relative_path, content_lines):
     """
