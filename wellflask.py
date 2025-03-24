@@ -59,9 +59,24 @@ def execute_ssh_command(sess_id, command):
     ssh_client = sessions[sess_id]['ssh']
     try:
         stdin, stdout, stderr = ssh_client.exec_command(command)
+        
+        # Read output in chunks until no more data
+        out = ''
+        while True:
+            chunk = stdout.read(4096).decode(errors='replace')
+            if not chunk:
+                break
+            out += chunk
+            
+        # Read error output in chunks
+        err = ''
+        while True:
+            chunk = stderr.read(4096).decode(errors='replace')
+            if not chunk:
+                break
+            err += chunk
+            
         exit_status = stdout.channel.recv_exit_status()
-        out = stdout.read().decode(errors='replace')
-        err = stderr.read().decode(errors='replace')
     except Exception as e:
         # Attempt reconnect on failure
         creds = sessions[sess_id]['creds']
@@ -76,9 +91,24 @@ def execute_ssh_command(sess_id, command):
             ssh_client.connect(**creds)
             sessions[sess_id]['ssh'] = ssh_client
             stdin, stdout, stderr = ssh_client.exec_command(command)
+            
+            # Read output in chunks until no more data
+            out = ''
+            while True:
+                chunk = stdout.read(4096).decode(errors='replace')
+                if not chunk:
+                    break
+                out += chunk
+                
+            # Read error output in chunks
+            err = ''
+            while True:
+                chunk = stderr.read(4096).decode(errors='replace')
+                if not chunk:
+                    break
+                err += chunk
+                
             exit_status = stdout.channel.recv_exit_status()
-            out = stdout.read().decode(errors='replace')
-            err = stderr.read().decode(errors='replace')
         except Exception as e2:
             return False, f'Connection lost and reconnect failed: {str(e2)}'
 
