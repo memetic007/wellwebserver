@@ -324,7 +324,7 @@ def execute_new_topic(ssh_client, decode_lines,conf,title):
         wait_for_prompt()
             
         # Send g conference command
-        channel.send(f"!post -e \"{title}\" {conf}\n")
+        channel.send(f"!post -n -e \"{title}\" {conf}\n")
         time.sleep(0.1)
         for line in decode_lines:
             channel.send(line + "\n")
