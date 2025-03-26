@@ -299,6 +299,32 @@ def get_cflist():
     cflist = [line.strip() for line in output.splitlines() if line.strip()]
     return jsonify({'cflist': cflist}), 200
 
+@app.route('/get_watch_list', methods=['GET'])
+def get_watch_list():
+    # Get session ID
+    sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
+    
+    # Execute command using helper function
+    success, result = execute_ssh_command(sess_id, 'cat .cfdir/.wswatchlist')                                     
+    
+    if not success:
+        return jsonify({'error': result}), 401
+        
+    exit_status, output, error = result
+    
+    if exit_status != 0 or error:
+        # if file doesn't exist, return empty string
+        if "No such file" in error:
+            return jsonify({'watch_list': ''}), 200
+        else:
+            return jsonify({
+                'error': 'Failed to read watch list',
+                'details': error or 'Unknown error'
+            }), 500
+
+    # Return the output as a string
+    return jsonify({'watch_list': output}), 200
+
 def execute_new_topic(ssh_client, decode_lines,conf,title):
         
     try:
@@ -607,6 +633,73 @@ def execute_sftp_put_file(ssh_client, relative_path, content_lines):
     except Exception as e:
         return False, f"Error executing SFTP file transfer: {str(e)}"
 
+def execute_sftp_put_file_string(ssh_client, relative_path, file_content):
+    """
+    Transfers file content directly to a remote path using SFTP.
+    
+    Args:
+        ssh_client: The SSH client to use for connection
+        relative_path: The path relative to home directory where the file should be created/updated
+        file_content: String containing the file content to write
+        
+    Returns:
+        tuple: (success, message)
+    """
+    try:
+        try:
+            sftp = ssh_client.open_sftp()
+        except Exception as e:
+            return False, f"Failed to open SFTP connection: {str(e)}"
+
+        try:
+            # Resolve the relative path to the absolute home directory path
+            try:
+                home_dir = sftp.normalize('.')
+            except Exception as e:
+                return False, f"Failed to resolve home directory: {str(e)}"
+
+            # Make sure path is treated as relative to home
+            if relative_path.startswith('/'):
+                relative_path = relative_path[1:]
+            
+            remote_filepath = f"{home_dir}/{relative_path}"
+            
+            # Make sure directory exists
+            try:
+                dir_path = os.path.dirname(remote_filepath)
+                if dir_path and dir_path != home_dir:
+                    try:
+                        sftp.stat(dir_path)
+                    except FileNotFoundError:
+                        return False, f"Directory {dir_path} not found"
+                    except Exception as e:
+                        return False, f"Error checking directory {dir_path}: {str(e)}"
+            except Exception as e:
+                return False, f"Error processing directory path: {str(e)}"
+              
+            # Write content directly to remote file
+            try:
+                with sftp.file(remote_filepath, 'w') as remote_file:
+                    remote_file.write(file_content)
+            except PermissionError:
+                return False, f"Permission denied writing to {remote_filepath}"
+            except IOError as e:
+                return False, f"IO Error writing to file: {str(e)}"
+            except Exception as e:
+                return False, f"Error writing to file: {str(e)}"
+
+        finally:
+            # Always try to close SFTP
+            try:
+                sftp.close()
+            except:
+                pass  # Ignore errors during close
+
+        return True, f"Successfully transferred file to {relative_path}"
+
+    except Exception as e:
+        return False, f"Error executing SFTP file transfer: {str(e)}"
+
 def execute_put_cflist(ssh_client, cflist_lines):
     """Legacy function that uses the new generalized function"""
     return execute_sftp_put_file(ssh_client, '.cfdir/.wscflist', cflist_lines)
@@ -672,6 +765,69 @@ def put_cflist():
     except Exception as e:
         return jsonify({
             'error': f'Failed to process put_cflist: {str(e)}'
+        }), 500
+
+@app.route('/put_watch_list', methods=['POST'])
+def put_watch_list():
+    # Get session ID
+    sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
+    if not sess_id or sess_id not in sessions:
+        return jsonify({'error': 'No active session. Please connect first.'}), 401
+        
+    # Get request data
+    data = request.get_json()
+    if not data or 'watch_list' not in data:
+        return jsonify({'error': 'Missing watch_list parameter'}), 400
+        
+    watch_list = data['watch_list']
+    if not isinstance(watch_list, str):
+        return jsonify({'error': 'watch_list must be a JSON string'}), 400
+        
+    try:
+        # Get SSH client and try to update watch list using the string function
+        ssh_client = sessions[sess_id]['ssh']
+        success, result = execute_sftp_put_file_string(ssh_client, '.cfdir/.wswatchlist', watch_list)
+        
+        # If failed, try to reconnect and retry once
+        if not success:
+            try:
+                # Get stored credentials
+                creds = sessions[sess_id]['creds']
+                
+                # Close old connection
+                try:
+                    ssh_client.close()
+                except:
+                    pass
+                
+                # Create new connection
+                ssh_client = paramiko.SSHClient()
+                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh_client.connect(**creds)
+                
+                # Store new connection
+                sessions[sess_id]['ssh'] = ssh_client
+                
+                # Try update again
+                success, result = execute_sftp_put_file_string(ssh_client, '.cfdir/.wswatchlist', watch_list)
+                
+            except Exception as e:
+                return jsonify({'error': f'Reconnection failed: {str(e)}'}), 500
+        
+        if not success:
+            return jsonify({'error': result}), 500
+            
+        # Update last active time
+        sessions[sess_id]['last_active'] = time.time()
+        
+        return jsonify({
+            'success': True,
+            'message': result
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': f'Failed to process put_watch_list: {str(e)}'
         }), 500
 
 @app.route('/forget_remember', methods=['POST'])
