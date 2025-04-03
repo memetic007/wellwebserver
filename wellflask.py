@@ -43,18 +43,53 @@ def execute_ssh_command(sess_id, command):
             - If success is True, result contains (exit_status, stdout, stderr)
             - If success is False, result contains error message
     """
-    # Validate session
+    # Validate session with retries
     if not sess_id or sess_id not in sessions:
-        return False, 'No active session. Please connect first.'
+        # Try to reconnect up to 2 times
+        for attempt in range(2):
+            try:
+                if 'creds' in sessions.get(sess_id, {}):
+                    creds = sessions[sess_id]['creds']
+                    ssh_client = paramiko.SSHClient()
+                    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh_client.connect(**creds)
+                    sessions[sess_id] = {
+                        'ssh': ssh_client,
+                        'creds': creds,
+                        'last_active': time.time()
+                    }
+                    break
+            except Exception:
+                if attempt == 1:  # Last attempt failed
+                    return False, 'No active session. Please connect first.'
+                continue
 
-    # Check idle timeout
-    if time.time() - sessions[sess_id]['last_active'] > 1800:
+    # Check idle timeout and try to reconnect if needed
+    if sess_id in sessions and time.time() - sessions[sess_id]['last_active'] > 1800:
+        # Session timed out - try to reconnect
         try:
-            sessions[sess_id]['ssh'].close()
-        except Exception:
-            pass
-        sessions.pop(sess_id, None)
-        return False, 'Session timed out due to inactivity.'
+            if 'creds' in sessions[sess_id]:
+                creds = sessions[sess_id]['creds']
+                # Close old connection
+                try:
+                    sessions[sess_id]['ssh'].close()
+                except:
+                    pass
+                sessions.pop(sess_id, None)
+                
+                # Try to establish new connection
+                ssh_client = paramiko.SSHClient()
+                ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh_client.connect(**creds)
+                sessions[sess_id] = {
+                    'ssh': ssh_client,
+                    'creds': creds,
+                    'last_active': time.time()
+                }
+            else:
+                return False, 'Session timed out and no credentials available to reconnect.'
+        except Exception as e:
+            return False, f'Session timed out and reconnection failed: {str(e)}'
 
     ssh_client = sessions[sess_id]['ssh']
     try:
@@ -221,19 +256,40 @@ def extractconfcontent():
     out = extract2json.processrawextract(out)
     
     # convert the line by line JSON to a single JSON object
-    
     if include_conflist:
         out = makeobjects2json.makeObjects(out,conflist)
     else:
         conflist = []
         out = makeobjects2json.makeObjects(out,conflist)
 
-    # Build response
-    response = {
-        'exit_status': exit_status,
-        'output': out,
-        'data': json.loads(out)  # Parse the JSON string back to an object and include it in the response
-    }
+    # Debug: Print problematic JSON before modification
+    # print("Original JSON:", out[:200])  # Print first 200 chars to see structure
+    
+    try:
+        # Try parsing without any modifications first
+        parsed_data = json.loads(out)
+        
+        # Clean up backslashes in the output string after successful parse
+        # commented out - breaks client side parsing
+        # out = re.sub(r'\\{2,}', r'\\', out)
+        
+        response = {
+            'exit_status': exit_status,
+            'output': out,  # This will have reduced backslashes
+            'data': parsed_data  # This will have the parsed JSON structure
+        }
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error at position {e.pos}, line {e.lineno}, col {e.colno}")
+        print(f"Error message: {str(e)}")
+        print(f"Context: {out[max(0, e.pos-50):min(len(out), e.pos+50)]}")
+        return jsonify({
+            'error': 'JSON parsing failed',
+            'details': str(e),
+            'position': e.pos,
+            'line': e.lineno,
+            'column': e.colno,
+            'context': out[max(0, e.pos-50):min(len(out), e.pos+50)]
+        }), 400
     
     # Only include conflist in response if it was requested and retrieved
     if include_conflist and conflist is not None:
@@ -421,9 +477,27 @@ def execute_post_reply(ssh_client, decoded_lines, conf, topic, debug_mode=False,
 def postreply():
     # Get session ID
     sess_id = session.get('session_id') or request.headers.get('X-Session-ID')
+    
+    # Try to reconnect up to 2 times if no valid session
     if not sess_id or sess_id not in sessions:
-        return jsonify({'error': 'No active session. Please connect first.'}), 401
-        
+        for attempt in range(2):
+            try:
+                if 'creds' in sessions.get(sess_id, {}):
+                    creds = sessions[sess_id]['creds']
+                    ssh_client = paramiko.SSHClient()
+                    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh_client.connect(**creds)
+                    sessions[sess_id] = {
+                        'ssh': ssh_client,
+                        'creds': creds,
+                        'last_active': time.time()
+                    }
+                    break
+            except Exception:
+                if attempt == 1:  # Last attempt failed
+                    return jsonify({'error': 'No active session. Please connect first.'}), 401
+                continue
+
     # Get request data
     data = request.get_json()
     if not all(k in data for k in ['base64_content', 'conference', 'topic']):
@@ -865,6 +939,8 @@ def forget_remember():
                     raise TimeoutError("Timed out waiting for prompt")
                 if channel.recv_ready():
                     resp = channel.recv(9999)
+                    # debug
+                    print (resp)
                     buff += resp.decode('utf-8', errors='replace')
                 time.sleep(0.1)
             return buff
@@ -909,6 +985,34 @@ def forget_remember():
         return jsonify({
             'error': f'Failed to process {option} request: {str(e)}'
         }), 500
+
+def try_reconnect_session(sess_id):
+    """
+    Helper to attempt reconnection for a session
+    
+    Returns:
+        bool: True if reconnection successful, False otherwise
+    """
+    if not sess_id or 'creds' not in sessions.get(sess_id, {}):
+        return False
+        
+    for attempt in range(2):
+        try:
+            creds = sessions[sess_id]['creds']
+            ssh_client = paramiko.SSHClient()
+            ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh_client.connect(**creds)
+            sessions[sess_id] = {
+                'ssh': ssh_client,
+                'creds': creds,
+                'last_active': time.time()
+            }
+            return True
+        except Exception:
+            if attempt == 1:  # Last attempt failed
+                return False
+            continue
+    return False
 
 # Add this after all your route definitions (just before if __name__ == '__main__':)
 print("\n*** Registered Routes ***")
