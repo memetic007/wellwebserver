@@ -71,6 +71,11 @@ def makeObjects(input_text, conflist):
                     newPost.handle = line['handle']
                     newPost.datetime = line.get('datetime', '')
                     newPost.datetime_iso8601 = utils.welldate_iso8601(newPost.datetime) if newPost.datetime else ''
+
+                    # update topic lastUpdateISO8601 if new post is newer
+                    if (currenttopic.lastUpdateISO8601 <= newPost.datetime_iso8601):
+                        currenttopic.lastUpdateISO8601 = newPost.datetime_iso8601
+
                     newPost.username = line.get('username', '')
                     newPost.pseud = line.get('pseud', '')
                     newPost.text = []
@@ -87,6 +92,20 @@ def makeObjects(input_text, conflist):
                 print(f"Error processing line: {str(e)}")
                 continue
         
+        # sort topic lists in confs
+        for conf in confs:
+            conf.topics.sort(key=lambda x: x.lastUpdateISO8601, reverse=True)
+            
+        
+        
+        print("Conference contents:")
+        for conf in confs:
+            print(f"\nConference: {conf.name}")
+            print("Topics:")
+            for topic in conf.topics:
+                print(f"  - {topic.handle}: {topic.title}")
+                print(f"    Last Update: {topic.lastUpdateISO8601}")
+
         # Process conflist
         if len(conflist) > 0:
             for testconf in conflist:

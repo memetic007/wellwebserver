@@ -28,11 +28,13 @@ class Post:
         }
 
 class Topic:
-    def __init__(self, conf, handle, title, posts=None):
+    def __init__(self, conf, handle, title, lastUpdateISO8601, posts=None):
         self.conf = conf
         self.handle = handle
         self.title = title
+        self.lastUpdateISO8601 = lastUpdateISO8601
         self.posts = posts if posts is not None else []
+        
 
     def add_post(self, post):
         if isinstance(post, Post):
@@ -42,13 +44,14 @@ class Topic:
 
     @classmethod
     def create_empty(cls):
-        return cls("", "", "", [])
+        return cls("", "", "", "",[])
 
     def to_dict(self):
         return {
             "conf": self.conf,
             "handle": self.handle,
             "title": self.title,
+            "lastUpdateISO8601": self.lastUpdateISO8601,
             "posts": [post.to_dict() for post in self.posts]
         }
 
