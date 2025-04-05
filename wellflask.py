@@ -262,21 +262,15 @@ def extractconfcontent():
         conflist = []
         out = makeobjects2json.makeObjects(out,conflist)
 
-    # Debug: Print problematic JSON before modification
-    # print("Original JSON:", out[:200])  # Print first 200 chars to see structure
+    
     
     try:
         # Try parsing without any modifications first
-        parsed_data = json.loads(out)
-        
-        # Clean up backslashes in the output string after successful parse
-        # commented out - breaks client side parsing
-        # out = re.sub(r'\\{2,}', r'\\', out)
         
         response = {
             'exit_status': exit_status,
-            'output': out,  # This will have reduced backslashes
-            'data': parsed_data  # This will have the parsed JSON structure
+            'output': out,
+            'data': out
         }
     except json.JSONDecodeError as e:
         print(f"JSON decode error at position {e.pos}, line {e.lineno}, col {e.colno}")
