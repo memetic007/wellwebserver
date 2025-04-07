@@ -1,0 +1,501 @@
+EXTRACT(1L)							   EXTRACT(1L)
+
+
+
+NAME
+       extract - Extract Picospan responses
+
+SYNOPSIS
+       extract [options] [conferences] [topics] [responses ...]
+
+DESCRIPTION
+       extract extracts Picospan responses from a conference.  It's useful for
+       quickly reading responses from a	 different  conference	than  the  one
+       you're  in, quoting other responses in a new response you're composing,
+       creating files for downloading, searching  for  responses  by  date  or
+       user,  and  easily  reading  hidden  responses.	It can also be used to
+       search topics for keywords in the response text.
+
+       extract does essentially the same thing	as  the	 Picospan  see,	 find,
+       browse,	check,	and  fixseen  commands,	 but  more  flexibly.  You can
+       extract any subset of responses.	 You can restrict the responses	 to  a
+       specific	 user  and/or  a  specific period of time.  You can extract or
+       search multiple conferences at once.  The output can go to your screen,
+       to  a  file,  or	 directly into your editor buffer.  Since extract is a
+       UNIX command, it	 can  be  run  from  almost  anywhere,	including  the
+       response	 editor	 and mail.  If you know the topic and response numbers
+       you want, you can extract from any conference, even  if	you  are  cur-
+       rently reading another conference.
+
+       You must be a member to extract responses from a private conference.
+
+       conferences is one or more conference names, separated by commas.  If a
+       name begins with an at sign ('@'),  the	rest  of  the  name  is	 taken
+       instead	to be the name of a file containing a list of whitespace-sepa-
+       rated conference names.	If no  file  is	 given	(a  plain  '@'),  your
+       .cflist	is  used.   If the file name is '-', the list is read from the
+       standard input.
+
+       If the conference name itself is '+' then all public  conferences,  and
+       all private conferences of which you are a member, are extracted.
+
+       topics  and  responses  are individual numbers, inclusive ranges of the
+       form
+
+	    start-end
+
+       or multiple numbers and/or ranges separated by commas.  A  dollar  sign
+       ('$') can be used to specify the last topic in a conference or the last
+       response in a topic.
+
+       A missing start in a range implies topic 1 or response 0; a missing end
+       implies	the last topic or response.  Thus, '-' implies the entire con-
+       ference or topic.
+
+       So
+
+	    extract words 565
+
+       would extract the entire topic 565 in words,
+
+	    extract words 565 162
+
+       would extract response 162,
+
+       and
+
+	    extract words 565 162,170-
+
+       would extract response 162 and responses 170 through the end.
+
+       You can separate things with periods instead of spaces:
+
+	    extract news.640.4
+
+       This can be useful when cutting-and-pasting a reference which used that
+       format.
+
+       If  you're  running extract from Picospan's OK prompt, you can omit the
+       conferences argument and extract will extract from the current  confer-
+       ence.   If  you're in the process of reading a topic with Picospan, you
+       can omit the topics argument as well.
+
+       Output normally goes to your screen, but you can also direct  it	 to  a
+       file instead:
+
+	    extract news 630 4 > filename
+
+       This  file  could  then be downloaded, incorporated into mail, etc.  If
+       you are running extract from a Picospan prompt  and  you	 redirect  the
+       output, you must precede the command with an exclamation point:
+
+	    !extract news 630 4 > filename
+
+       From  red,  the	response  editor, there is a command for capturing the
+       output of extract and inserting it directly into	 the  response	you're
+       creating:
+
+	    :>extract news 640 4
+
+       will  put  the  response into your message.  A double >> will prepend a
+       '>' at the beginning of each line:
+
+	    :>>extract news 640 4
+
+       This is nice because it's makes it clear that  you're  quoting  another
+       response.
+
+       With  no	 arguments,  extract  puts  up a full-screen menu.  Select the
+       extraction options by moving the cursor with the arrow keys and filling
+       in the fields you want.	You must have a cursor-addressable terminal to
+       use this mode of extract.
+
+OPTIONS
+       -a     With multiple -f's (see below), require all strings for a	 match
+	      (the  default is "any", i.e. only matching one of the strings is
+	      required to constitute a match).	Without -w  (see  below),  the
+	      strings  must  all be on the same line; with -w, within the same
+	      response.	 Order is irrelevant.
+
+       -b when
+	      Limit responses to those dated before the	 specified  time  (see
+	      below).
+
+       -B file
+	      Limit responses to those dated before the specified file's modi-
+	      fication time.
+
+       -c     For each conference, report only the number of topics which have
+	      matching	responses.   Nothing is output for conferences with no
+	      matching responses.
+
+       -C     For each topic, report only the number  of  matching  responses.
+	      Nothing is output for topics with no matching responses.
+
+       -d user
+	      Don't  show  responses  made by specific userids.	 Multiple -d's
+	      are allowed.  If the name begins with @, the rest of the name is
+	      taken  to be the name of a file containing white-space-separated
+	      userids.	There may no more than 64 userids total.
+
+       -e     With -f, require an exact (case-sensitive) match.
+
+       -E     Exclude private conferences (same as -j).
+
+       -f string
+	      Find responses with the given string.  Multiple -f's, up to  32,
+	      may be given; see also -a.  The default is to show only response
+	      headers and the lines containing the string; if -w is given, the
+	      whole response is shown.	The matching is case-insensitive, i.e.
+	      upper case letters match lower case letters, unless -e  is  also
+	      specified.  See below for a discussion of string arguments.
+
+       -F     Show frozen topics only.
+
+       -g     With  -p,	 or  -P,  include forgotten topics.  The default is to
+	      omit forgotten topics if -p or -P is given.
+
+       -G     Show forgotten topics only.  Used with -p or -P; if  neither  is
+	      specified, -P is implied.
+
+       -h     Show  the	 text of hidden responses.  The default is to omit the
+	      text of hidden responses, unless a single response is  specified
+	      on the command line.
+
+       -H     Show hidden responses only.
+
+       -i     Produce  only  an	 inventory  of	the  responses selected.  This
+	      includes the numbers of topics, responses, lines, words,	bytes,
+	      and users.
+
+	      If -t is also given, limit statistics to topics only.
+
+       -j     Public conferences only.
+
+       -J     Private conferences only.
+
+       -K uid For use with Engaged.
+
+       -l     Show only the last matching response in each topic.
+
+       -L     Show linked topics only.
+
+       -m     Send  the	 output	 through  a pager.  The pager is created using
+	      environment  variables  SHELL  (default  "/bin/sh")  and	 PAGER
+	      (default "more").
+
+       -M     Show only topics which are not linked.
+
+       -n     Show  new	 responses.   Used with -p or -P; if neither is speci-
+	      fied, -P is assumed if any of -cCiotTU  are  present,  otherwise
+	      -p.
+
+       -N     Show  new	 responses  since yours, i.e., new responses in topics
+	      where yours is the first new response and a response by  someone
+	      else  follows.   Used with -p or -P; if neither is specified, -P
+	      is assumed if any of -cCiotTU are present, otherwise -p.
+
+       -o     Show response headers only; omit text.
+
+       -O     Show text only; omit headers
+
+       -p     Read parti file (heeding forgotten topics), and update responses
+	      seen.  For this to work properly, you must not simultaneously be
+	      reading the conference with Picospan.  The safest thing to do is
+	      to  use  Picospan's  leave command before using -p or one of the
+	      other options which imply -p.
+
+       -P     Read parti file (heeding forgotten topics), but don't update.
+
+       -r     Include  retired	topics	if  an	entire	conference  is	 being
+	      extracted.   The default is to omit retired topics.  If a single
+	      topic  is	 being	extracted,  however,  its  retired  status  is
+	      ignored.
+
+       -q     Report both user login names and numeric userids in headers.
+
+       -R     Show retired topics only.
+
+       -s when
+	      Limit  responses	to  those  dated since the specified time (see
+	      below).  When extracting	from  an  entire  conference,  -s  can
+	      greatly  speed  up  things  since	 extract  doesn't need to look
+	      through topics which have not  been  modified  since  the	 given
+	      time.
+
+       -S file
+	      Limit  responses to those dated since the specified file's modi-
+	      fication time.
+
+       -t     Show topic titles only.  Other options are  still	 processed  if
+	      given, so specifying
+
+	      -t -s -2
+
+	      for  example  will  show	the  titles  of	 topics which have had
+	      responses in the last two days.
+
+	      If the topic is forgotten, frozen, linked, and/or	 retired,  the
+	      letters  G, F, L and/or R respectively will be shown to the left
+	      of the topic title.
+
+	      With -i, limit statistics to topics only.
+
+       -T title
+	      Like -t, but titles are further restricted to  those  containing
+	      the  given string.  Matches are case-insensitive.	 See below for
+	      a discussion of string arguments.
+
+       -u user
+	      Limit responses to specific userids.  Multiple -u's are allowed.
+	      If  the  name begins with @, the rest of the name is taken to be
+	      the name of a  file  containing  white-space-separated  userids.
+	      There may no more than 64 userids.
+
+       -U     Show only a list of the userids of those who posted the selected
+	      responses, along with a count of responses for each name.
+
+       -v     Produce verbatim Picospan data.
+
+       -w     With -f, show the whole response when a match  is	 found.	  With
+	      -a, look for matches across the entire response.
+
+       -W     With  -f, require whole-word matches, where a "word" is a string
+	      of alphanumerics.	 For example, "can" would not  match  "cannon"
+	      with -W.
+
+       -x     Omit scribbled responses.
+
+       -X     Show scribbled responses only.  With -X, -sSbB refer to scribble
+	      dates rather than response dates, and -uU	 refer	to  scribblers
+	      rather than posters.
+
+       If  a string argument contains spaces, tabs, or special characters such
+       as asterisk or question mark,  enclose  the  entire  string  in	single
+       quotes.	To get a single quote into the string, precede it with a back-
+       slash.  To get a backslash into the string,  precede  it	 with  another
+       backslash.
+
+       -y     Show  your  last	responses,  i.e.  responses of yours which are
+	      still new to you.	 Used with -p or -P; if neither is  specified,
+	      -P is assumed.
+
+       -z     Rather  than displaying responses, mark topics as read up to and
+	      including the last response matched in each  topic.   Note  that
+	      this  can	 be  used not only to catch up to the present, but can
+	      also be used to "catch up" to some point in the past  (with  -b,
+	      for example).  Implies -p.
+
+       -Z     Don't show frozen topics.
+
+       The when argument to -b and -s is in one of the following forms:
+
+	    Form	    Meaning			   Example
+
+	    1. mm/dd/yy	    Date			   12/25/89
+	    2. mm/dd	    Date this year		   4/26
+	    3. -d or d	    Days prior to now		   -3
+	    4. hh:mm	    Time today			   14:30
+	    5. hh:mm:sc	    Time today			   14:32:47
+	    6. -hh:mm	    Hours & minutes prior to now   -2:30
+	    7. -hh:mm:ss    ... and seconds prior to now   -2:30:10
+
+	    8. (UNIX style)	       Sun Jan 17 22:55:23 PST 1993
+
+       Forms 1 and 2 imply midnight (00:00 AM) on that date.  Form 3 refers to
+       24-hour periods, so if it is 9:00 now, -2 refers to 9:00 two days  ago.
+
+       If  form 4 or 5 is used and the time given would be in the future, that
+       time yesterday is used instead, e.g. if it is 1:00 now and an  argument
+       of 23:00 is specified, 23:00 yesterday is implied.
+
+       Forms  1,  2, and 3 may be combined with form 4 or 5 by using an inter-
+       vening '@' character, e.g.
+
+	    12/25/89@14:32:47
+	    -3@14:30
+
+       If form 8 is used, weekday and time zone are ignored.   Month  and  day
+       must  be	 present;  hour, minute, second default to 0; year defaults to
+       current year.  Form 8 must typically be enclosed	 in  quotes  since  it
+       contains spaces.
+
+       Options	may  be	 combined freely.  Most options serve to further limit
+       the responses given by the conference and topic	and/or	response  num-
+       bers;  when  multiple  options  are used, only the items which meet the
+       criteria of all the arguments are extracted.
+
+EXAMPLES
+       Extract topic 500 in the News conference:
+
+	    extract news 500
+
+       Extract response 12 only:
+
+	    extract news 500 12
+
+       Extract responses 100, 102, and 200 through the end:
+
+	    extract news 500 100,102,200-
+
+       Extract all of topics 500 and 504:
+
+	    extract news 500,504
+
+       Extract response 0 from all of topics 900 on:
+
+	    extract news 900- 0
+
+       Extract all responses from the News conference  made  in	 the  last  48
+       hours:
+
+	    extract -s -2 news
+
+       Extract all responses by user myrtle in News since Christmas:
+
+	    extract -u myrtle -s 12/25 news
+
+       Extract all responses by user myrtle in News and Words since the Fourth
+       of July:
+
+	    extract -u myrtle -s 7/4 news,words
+
+       Extract all lines from News which mention Iraq:
+
+	    extract -f iraq news
+
+       Extract lines in News which mentioned Iraq in the last 30 days:
+
+	    extract -f iraq -s -30 news
+
+       Extract lines in News where myrtle referred to aspirin in  the  past  7
+       days:
+
+	    extract -u myrtle -s -7 -f aspirin news
+
+       Extract lines in News where myrtle referred to Baby Doe:
+
+	    extract -u myrtle -f "baby doe" news
+
+       Extract	just  the titles of the topics in News which mentioned Iraq in
+       one of their responses in the last 30 days:
+
+	    extract -t -f iraq -s -30 news
+
+       Extract the titles of the topics in News
+
+	    extract -t news
+
+       Extract the titles of the topics	 in  News  which  contain  the	string
+       "well" in the title:
+
+	    extract -T well news
+
+       Extract all responses in News topic 500 made in the year 1991
+
+	    extract -s 1/1/91 -b 1/1/92 news 500
+
+       Locate  the  response  made  somewhere in News today or yesterday where
+       myrtle mentioned a $3 bill:
+
+	    extract -f "$3" -u myrtle -s -2 news
+
+       The Loma Prieta quake occurred at 5:04 PM on October  17,  1989.	  Find
+       the  responses  in the Sports conference which mentioned the quake that
+       evening:
+
+	    extract -f quake -s 10/17/89@17:04 -b 10/18 sports
+
+       Show in their entirety responses in News which mentioned 'quake' in the
+       last two days:
+
+	    extract -wf quake -s -2 news
+
+       Find  responses	in  the News conference than mention both "ehrlichman"
+       and "haldeman":
+
+	    extract -aw -f ehrlichman -f haldeman news
+
+       Extract the titles of all the topics in News, including retired topics:
+
+	    extract -tr news
+
+       Extract the titles of only the retired topics in News
+
+	    extract -tR news
+
+       Extract	the  titles  of topics in News which have had responses in the
+       past week:
+
+	    extract -s -7 -t news
+
+       Extract the titles of topics in News which myrtle has posted in in  the
+       past week:
+
+	    extract -s -7 -t -u myrtle news
+
+       Show a list of userids of those who have posted in News topic 777:
+
+	    extract -U news 777
+
+       Show  a list of userids of those who have posted in News in the past 24
+       hours:
+
+	    extract -U -s -1 news
+
+       Show a summary of activity in News in the past three hours:
+
+	    extract -i -s -3:00 news
+
+       Show a summary of activity in News and Words in the past week:
+
+	    extract -i -s -7 news,words
+
+       Show which responses were scribbled in news in the past 2 days:
+
+	    extract -X -s -2 news
+
+       Extract all new responses from all the conferences on your .cflist, and
+       mark the responses seen:
+
+	    extract @ -n
+
+       Check which conferences on your .cflist have new responses:
+
+	    extract @ -cn
+
+       List the topics in the news conference which have new responses:
+
+	    extract -Cn news
+
+       Catch up (fixseen) in all the conferences on your .cflist:
+
+	    extract @ -zn
+
+       Catch up to 7 days ago in the news conference:
+
+	    extract -zb -7 news
+
+       From the Respond prompt, show hidden response 247:
+
+	    Respond: extract 247
+
+       From the Respond prompt, show puffball's last response in that topic:
+
+	    Respond: extract -lu puffball
+
+       From  the  OK  prompt,  list the topics in the conference that have had
+       responses in the last 3 days:
+
+	    OK: extract -s -3 -t
+
+
+SEE ALSO
+       pmat(1L).
+
+AUTHOR
+       Bryan Higgins (bryan).
+
+
+
+								   EXTRACT(1L)
