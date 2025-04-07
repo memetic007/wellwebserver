@@ -1,14 +1,31 @@
 import sys
 from datetime import datetime
+from classes import Topic,Conf, Post
 
-# check for -test switch on the command line 
+
+
+def filter_by_prefix(myTopicList, prefix):
+    """
+    Filter a list of strings to return only those that begin with a specific prefix.
+    
+    Args:
+        myTopicList: A list of strings to filter
+        prefix: A string to match against the beginning of each item
+        
+    Returns:
+        A new list containing only the items that begin with the prefix
+    """
+    return [item for item in myTopicList if item.startswith(prefix)]
+
+
 
 def wait_for_spacebar():
     print("Press spacebar to continue...")
     while True:
         if sys.stdin.read(1) == ' ':
             break
-        
+
+# check for -test switch on the command line        
 def checkTest():
    
    # legacy implementation - use checkArg instead for new arg checks
@@ -77,3 +94,19 @@ def welldate_iso8601(date_str):
 
 def nop():
     return
+
+def find_topic_by_handle(myTopicObjectsList, handle):
+    """
+    Search a list of Topic objects for a match with a specific handle.
+    
+    Args:
+        myTopicObjectsList: A list of Topic objects to search
+        handle: A string to match against the handle field of each Topic object
+        
+    Returns:
+        True if a match is found, False otherwise
+    """
+    for topic in myTopicObjectsList:
+        if hasattr(topic, 'handle') and topic.handle == handle:
+            return True
+    return False

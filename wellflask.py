@@ -217,12 +217,12 @@ def extractconfcontent():
     
     if not include_conflist:
         #conflist is false
-        cmd = data.get('command')
-        if not cmd:
+        get_conf_cmd = data.get('command')
+        if not get_conf_cmd:
             return jsonify({'error': 'No command provided'}), 400
             
         # Check if command starts with 'extract' (case insensitive)
-        first_token = cmd.split()[0] if cmd.split() else ""
+        first_token = get_conf_cmd.split()[0] if get_conf_cmd.split() else ""
         if not first_token.lower() == "extract":
             return jsonify({'error': 'Command must start with "extract"'}), 400
     else:
@@ -240,13 +240,28 @@ def extractconfcontent():
             return jsonify({'error': 'Failed to retrieve conference list'}), 500
 
         # Change from spaces to commas with no spaces
-        cmd = 'extract -np ' + ','.join(conflist)
+        get_conf_cmd = 'extract -np ' + ','.join(conflist)
 
-    print("command provided to extractconfcontent: " + cmd)
+    print("command provided to extractconfcontent: " + get_conf_cmd)
 
+    if include_conflist:
+        get_topics_cmd = 'extract -l -s -30 ' + ','.join(conflist)
+        print("command provided to extractconfcontent: " + get_topics_cmd)
+        result = ""
+        success, result = execute_ssh_command(sess_id, get_topics_cmd)
+        
+        # Check if result is a tuple and extract the second item if it is
+        if isinstance(result, tuple) and len(result) >= 2:
+            result = result[1]
+        
+        if not success:
+            return jsonify({'error': result}), 401
+        topic_list = result
+    else:
+        topic_list = []
            
     # Execute the extract command
-    success, result = execute_ssh_command(sess_id, cmd)
+    success, result = execute_ssh_command(sess_id, get_conf_cmd)
     
     if not success:
         return jsonify({'error': result}), 401
@@ -257,10 +272,10 @@ def extractconfcontent():
     
     # convert the line by line JSON to a single JSON object
     if include_conflist:
-        out = makeobjects2json.makeObjects(out,conflist)
+        out = makeobjects2json.makeObjects(out,conflist,topic_list)
     else:
         conflist = []
-        out = makeobjects2json.makeObjects(out,conflist)
+        out = makeobjects2json.makeObjects(out,conflist,topic_list)
 
     
     
