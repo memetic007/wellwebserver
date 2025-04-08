@@ -439,7 +439,7 @@ def execute_post_reply(ssh_client, decoded_lines, conf, topic, debug_mode=False,
     try:
         # Choose command based on option
         
-        command = f"post -n {conf} {topic}\n"
+        command = f"post  {conf} {topic}\n"
         
         stdin, stdout, stderr = ssh_client.exec_command(command, get_pty=True)
 
