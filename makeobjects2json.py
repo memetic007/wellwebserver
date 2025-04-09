@@ -26,8 +26,9 @@ def makeObjects(input_text, conflist, topics):
             topic_list = [line for line in topic_list if line.strip() and (len(line) == 0 or not line[0].isspace())]
             
             # Process the list two lines at a time to create Topic objects
-            old_topic_objects = []
             i = 0
+
+            conf_topic_list = []  # List of tuples with confname and topiclist
             while i < len(topic_list) - 1:  # Ensure we have at least two lines to process
                 # Get the A line (first line) and B line (second line)
                 line_a = topic_list[i]
@@ -38,7 +39,8 @@ def makeObjects(input_text, conflist, topics):
                 
                 # Get conf from handle
                 conf = utils.conffromhandle(handle)
-                
+                currentconf = conf
+
                 # Get title from line A (rest of the line after handle and :)
                 title = line_a.split(':', 1)[1].strip() if ':' in line_a else ""
                 
@@ -52,9 +54,18 @@ def makeObjects(input_text, conflist, topics):
                 # Convert date string to ISO8601 format
                 lastUpdateISO8601 = utils.welldate_iso8601(date_str)
                 
-                # Create Topic object and add to list
+                # Create Topic object
                 new_topic = Topic(conf, handle, title, lastUpdateISO8601)
-                old_topic_objects.append(new_topic)
+                
+                # Add topic to conf_topic_list
+                found = False
+                for conf_tuple in conf_topic_list:
+                    if conf_tuple['confname'] == conf:
+                        conf_tuple['topiclist'].append(new_topic)
+                        found = True
+                        break
+                if not found:
+                    conf_topic_list.append({'confname': conf, 'topiclist': [new_topic]})
                 
                 # Move to next pair of lines
                 i += 2
@@ -140,7 +151,26 @@ def makeObjects(input_text, conflist, topics):
                 continue
         
         
+        if len(conflist) > 0:
+            for testconf in conflist:
+                if not isinstance(testconf, str):
+                    continue
+                # Check if testconf matches the beginning of any conference name in the confs list
+                if not any(conf.name.startswith(testconf) for conf in confs):
+                    newconf = Conf.create_empty()
+                    newconf.name = testconf
+                    newconf.handle = testconf
+                    newconf.topics = []  # Initialize empty topic list
+                    confs.append(newconf)
         
+        # Merge topics from conf_topic_list into confs
+        for conf in confs:
+            for conf_tuple in conf_topic_list:
+                if conf_tuple['confname'].startswith(conf.name):
+                    existing_handles = {topic.handle for topic in conf.topics}
+                    for topic in conf_tuple['topiclist']:
+                        if topic.handle not in existing_handles:
+                            conf.topics.append(topic)
         
         # sort topic lists in confs
         for conf in confs:
@@ -157,16 +187,7 @@ def makeObjects(input_text, conflist, topics):
                 print(f"    Last Update: {topic.lastUpdateISO8601}")
 
         # Process conflist
-        if len(conflist) > 0:
-            for testconf in conflist:
-                if not isinstance(testconf, str):
-                    continue
-                # Check if testconf matches the beginning of any conference name in the confs list
-                if not any(conf.name.startswith(testconf) for conf in confs):
-                    newconf = Conf.create_empty()
-                    newconf.name = testconf
-                    newconf.handle = testconf
-                    confs.append(newconf)
+        
 
         # create json output with error handling
         try:
