@@ -57,9 +57,12 @@ class Topic:
 
 class Conf:
     def __init__(self, name, handle, title, topics=None):
+        self.name = name
         self.handle = handle
         self.title = title
+        self.newTopicCount = 0
         self.topics = topics if topics is not None else []
+        
 
     def add_topic(self, topic):
         if isinstance(topic, Topic):
@@ -69,12 +72,13 @@ class Conf:
 
     @classmethod
     def create_empty(cls):
-        return cls("", "", "", [])
+        return cls("", "", "", 0, [])
 
     def to_dict(self):
         return {
             "name": self.name,
             "handle": self.handle,
             "title": self.title,
+            "newTopicCount": self.newTopicCount,
             "topics": [topic.to_dict() for topic in self.topics]
         }

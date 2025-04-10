@@ -102,6 +102,7 @@ def makeObjects(input_text, conflist, topics):
                         continue
                         
                     newTopic = Topic.create_empty()
+                    
                     newTopic.conf = utils.conffromhandle(line['handle'])
                     if not newTopic.conf:  # Check if conf is None or empty
                         continue
@@ -114,7 +115,7 @@ def makeObjects(input_text, conflist, topics):
                         currentconf.handle = currentconf.name
 
                     currentconf.add_topic(newTopic)
-
+                    currentconf.newTopicCount += 1
                     newTopic.handle = line['handle']
                     newTopic.title = line.get('title', '')  # Use get() with default value
                     topics.append(newTopic)
@@ -160,17 +161,18 @@ def makeObjects(input_text, conflist, topics):
                     newconf = Conf.create_empty()
                     newconf.name = testconf
                     newconf.handle = testconf
+                    newconf.newTopicCount = 0
                     newconf.topics = []  # Initialize empty topic list
                     confs.append(newconf)
         
-        # Merge topics from conf_topic_list into confs
-        for conf in confs:
-            for conf_tuple in conf_topic_list:
-                if conf_tuple['confname'].startswith(conf.name):
-                    existing_handles = {topic.handle for topic in conf.topics}
-                    for topic in conf_tuple['topiclist']:
-                        if topic.handle not in existing_handles:
-                            conf.topics.append(topic)
+            # Merge topics from conf_topic_list into confs
+            for conf in confs:
+                for conf_tuple in conf_topic_list:
+                    if conf_tuple['confname'].startswith(conf.name):
+                        existing_handles = {topic.handle for topic in conf.topics}
+                        for topic in conf_tuple['topiclist']:
+                            if topic.handle not in existing_handles:
+                                conf.topics.append(topic)
         
         # sort topic lists in confs
         for conf in confs:
