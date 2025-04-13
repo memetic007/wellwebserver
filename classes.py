@@ -56,7 +56,7 @@ class Topic:
         }
 
 class Conf:
-    def __init__(self, name, handle, title, topics=None):
+    def __init__(self, name, handle, title, newTopicCount, topics=None):
         self.name = name
         self.handle = handle
         self.title = title

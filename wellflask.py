@@ -245,7 +245,7 @@ def extractconfcontent():
     print("command provided to extractconfcontent: " + get_conf_cmd)
 
     if include_conflist:
-        get_topics_cmd = 'extract -l -s -30 ' + ','.join(conflist)
+        get_topics_cmd = 'extract -P -l -s -30 ' + ','.join(conflist) 
         print("command provided to extractconfcontent: " + get_topics_cmd)
         result = ""
         success, result = execute_ssh_command(sess_id, get_topics_cmd)
